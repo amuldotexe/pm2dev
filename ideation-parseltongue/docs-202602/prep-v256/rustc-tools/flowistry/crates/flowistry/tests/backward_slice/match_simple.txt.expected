@@ -1,8 +1,0 @@
-fn main() {
-  `[let x = 1;]`
-  `[let y = match Some(x) {
-    None => 1,
-    Some(x) => x,
-  };]`
-  `[y;]`
-}

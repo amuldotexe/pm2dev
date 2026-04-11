@@ -1,7 +1,0 @@
-[package]
-name = "flowistry_ifc_traits"
-version = "0.5.44"
-edition = "2024"
-publish = false
- 
-[dependencies]

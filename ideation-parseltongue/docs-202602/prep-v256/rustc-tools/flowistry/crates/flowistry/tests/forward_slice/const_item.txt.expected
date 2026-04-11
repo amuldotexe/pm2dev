@@ -1,4 +1,0 @@
-fn foo() { 
-  const FOO: &str = "bar";
-  let x = FOO;
-}

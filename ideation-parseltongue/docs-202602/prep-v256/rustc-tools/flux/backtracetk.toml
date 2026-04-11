@@ -1,9 +1,0 @@
-[env]
-RUST_LIB_BACKTRACE = "0"
-
-[[hide]]
-begin = "flux_common::bug::.*bug_fmt"
-
-[[hide]]
-begin = "^rustc_interface::queries::QueryResult<&rustc_middle::ty::context::GlobalCtxt>::enter$"
-end = "^rustc_middle::ty::context::GlobalCtxt::enter::.*closure.*$"

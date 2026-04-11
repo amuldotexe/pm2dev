@@ -1,2 +1,0 @@
-1544_2.rs:13:10: error[E0277]: the trait bound `Base: creusot_std::model::DeepModel` is not satisfied: unsatisfied trait bound
-error: aborting due to 1 previous error

@@ -1,7 +1,0 @@
-fn foo() -> i32 { 1 }
-
-fn main() {
-  let mut x = 1;
-  x += foo();
-  `(x)`;
-}

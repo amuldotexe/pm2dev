@@ -1,9 +1,0 @@
-struct Foo<'a>(&'a mut i32);
-fn foo(f: Foo) {}
-
-fn main() {
-  `[let mut x = 0;]`
-  `[let f = Foo(&mut x);]`
-  `[foo(f);]`
-  `[x;]`
-}

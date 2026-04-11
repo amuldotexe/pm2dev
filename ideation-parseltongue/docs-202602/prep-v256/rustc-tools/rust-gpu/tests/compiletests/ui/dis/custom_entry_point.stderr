@@ -1,8 +1,0 @@
-OpCapability Shader
-OpMemoryModel Logical Simple
-OpEntryPoint Fragment %1 "hello_world"
-OpExecutionMode %1 OriginUpperLeft
-%2 = OpString "$DIR/custom_entry_point.rs"
-OpName %3 "custom_entry_point::main"
-%4 = OpTypeVoid
-%5 = OpTypeFunction %4

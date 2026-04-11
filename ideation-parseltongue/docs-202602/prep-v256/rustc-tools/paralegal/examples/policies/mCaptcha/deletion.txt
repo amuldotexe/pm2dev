@@ -1,8 +1,0 @@
-Scope: 
-Somewhere
-
-Policy:
-1. For each "sensitive" type marked user_data:
-    A. There is a "retrieval" that produces "sensitive" where:
-       a. There is a "deletes" marked deletes where:
-	       i) "retrieval" goes to "deletes"

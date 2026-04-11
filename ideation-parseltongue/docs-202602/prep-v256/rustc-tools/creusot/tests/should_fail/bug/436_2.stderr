@@ -1,8 +1,0 @@
-error: encountered a cycle during translation: Bad::None['_]; creusot_std::snapshot::Snapshot<&mut Bad<'_>>; Bad<'_>; Bad::Some['_];
- --> 436_2.rs:5:5
-  |
-5 |     None,
-  |     ^^^^
-
-error: aborting due to 1 previous error
-

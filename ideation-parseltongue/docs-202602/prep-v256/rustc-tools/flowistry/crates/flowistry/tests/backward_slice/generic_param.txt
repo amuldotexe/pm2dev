@@ -1,6 +1,0 @@
-fn main() {}
-
-fn foo<T>(t: T) {
-  let x = t;
-  `(x)`;
-}

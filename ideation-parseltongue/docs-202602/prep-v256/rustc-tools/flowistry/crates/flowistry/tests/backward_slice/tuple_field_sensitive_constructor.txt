@@ -1,6 +1,0 @@
-fn main() {
-  let x = 0;
-  let y = 1;
-  let t = (x, y);
-  `(t.0)`;
-}

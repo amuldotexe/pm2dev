@@ -1,8 +1,0 @@
-target
-mir_dump
-.env
-data
-.ipynb_checkpoints
-.Rhistory
-.cache
-*.so

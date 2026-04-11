@@ -1,6 +1,0 @@
-fn foo(y: Option<i32>) -> Option<i32> {
-  y?;
-
-  `[let x = Some(1);]`
-  x
-}

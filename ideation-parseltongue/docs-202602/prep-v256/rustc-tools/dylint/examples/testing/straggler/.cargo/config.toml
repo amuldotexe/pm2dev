@@ -1,6 +1,0 @@
-[build]
-# smoelius: `straggler` uses a different compiler version than the other example libraries.
-target-dir = "../../../target/straggler"
-
-[target.'cfg(all())']
-linker = "dylint-link"
