@@ -13,3 +13,7 @@ This is a list of new Tauri apps that I want to build
 - Tauri App for https://github.com/that-in-rust/floo-network-message-queue-visual-lab
 
 - Tauri App for https://github.com/that-in-rust/superset-on-rust
+
+- Tauri App for https://github.com/that-in-rust/pensieve-local-llm-server
+    - a multi-agent debate server that can be used to build a multi-agent debate system
+    - a local LLM server that can be used to debate an idea without needing to connect to the internet
