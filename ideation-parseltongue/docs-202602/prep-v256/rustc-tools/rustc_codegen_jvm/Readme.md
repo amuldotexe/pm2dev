@@ -1,0 +1,207 @@
+# rustc_codegen_jvm 🚀
+
+[![License: MIT/Apache-2.0](https://img.shields.io/badge/license-MIT%20%7C%20Apache--2.0-blue.svg)](https://opensource.org/licenses/MIT)  
+[![CI](https://github.com/IntegralPilot/rustc_codegen_jvm/actions/workflows/ci.yml/badge.svg)](https://github.com/IntegralPilot/rustc_codegen_jvm/actions)
+
+A **custom Rust compiler backend** that emits Java Virtual Machine bytecode.  
+Compile your Rust code into a runnable `.jar` on JVM 8+!
+
+---
+
+## 📖 Table of Contents
+
+1. [Demos](#-demos)
+2. [Features](#-features)
+3. [How It Works](#️-how-it-works)
+4. [Prerequisites](#-prerequisites)
+5. [Installation & Build](#-installation--build)
+6. [Usage](#-usage)
+7. [Running Tests](#-running-tests)
+8. [Project Structure](#-project-structure)
+9. [Contributing](#-contributing)
+10. [License](#-license) 
+
+---
+
+## 🔥 Demos
+All examples live in `tests/binary` and are compiled to JVM bytecode & run/tested on the CI on every commit. Some exciting demos made in pure-Rust include:
+
+- **[RSA](tests/binary/rsa/src/main.rs)** encryption/decryption  
+- **[Binary search](tests/binary/binsearch/src/main.rs)** algorithm  
+- **[Fibonacci](tests/binary/fibonacci/src/main.rs)** sequence generator  
+- **[Collatz conjecture](tests/binary/collatz/src/main.rs)** verifier  
+- **[Large prime](tests/binary/primes/src/main.rs)** generator  
+- Use of nested data structures: enums, structs, tuples, arrays, slices (**[enums](tests/binary/enums/src/main.rs)**, **[structs](tests/binary/structs/src/main.rs)** - both tests use arrays and tuples)  
+* **[Implementation blocks](tests/binary/impl/src/main.rs)** and **[traits](tests/binary/traits/src/main.rs)** (including dynamic dispatch!)
+- …and more!
+
+---
+
+## ✨ Features
+
+- **Minimal `no_std` & `no_core`** programs via `jvm-unknown-unknown`  
+- Optimisations including constant folding and propogation, dead code elimination, and more to generate efficient JVM bytecode
+- Basic `core` support on host target for JVM output  
+- Arithmetic (integers + floats, incl. checked ops)  
+- Comparisons, bitwise & logical ops  
+- Control flow: `if`/`else`, `match`, `for`, `while`, `loop`  
+- Type casting (`as`), primitive types  
+- Function calls (recursion supported)  
+- Arrays & slices with nested indexing  
+- Structs, tuples, enums (both C‑like and Rust‑style)  
+- Executable `.jar` generation for binary crates  
+- Mutable borrowing, references, and dereferencing
+- Implementations for ADTs, including using and returning `self`, `&self`, `&mut self`
+- Traits, including dynamic dispatch (`&dyn Trait`)
+- **Integration tests** for all features, in debug and release modes
+
+🚧 **Next Milestone:** Full support for the Rust `core` crate.
+
+---
+
+## ⚙️ How It Works
+
+1. **Rustc Frontend → MIR**  
+   Standard `rustc` parses your code into Mid‑level IR (MIR).
+2. **MIR → OOMIR**  
+   Custom “Object‑Oriented MIR” simplifies MIR into OOP‑style constructs.  
+   _(see `src/lower1.rs`)_  
+3. **OOMIR optimiser**
+   Optimises OOMIR using constant folding, dead code elimination, and more.  
+   _(see `src/optimise1.rs`)_  
+   - **Constant Folding**: Evaluates constant expressions at compile time.  
+   - **Constant Propagation**: Replaces variables with their constant values.  
+   - **Dead Code Elimination**: Removes unused code paths.  
+   - **Algebraic Simplification**: Simplifies expressions using algebraic identities.
+4. **OOMIR → JVM Classfile**  
+   Translate to `.class` files using `ristretto_classfile`.  
+   _(see `src/lower2.rs`)_  
+5. **R8 pass**  
+   `r8` adds stack map frames (neeeded to run on JVM 8+) and applies some further optimisations.
+6. **Link & Package**  
+   `java-linker` bundles `.class` files into a runnable `.jar` with `META-INF/MANIFEST.MF`.
+
+---
+
+## 🛠 Prerequisites
+
+- **Rust Nightly** (`rustup default nightly`)  
+- **Gradle 8.5+** (`gradle` in PATH)
+- **JDK 8+** (`java` in PATH, and the `JAVA_HOME` environment variable set)
+- **Python 3** (`python3` in PATH)
+
+---
+
+## 🏗 Installation & Build
+
+```bash
+# Clone & enter repo
+git clone https://github.com/IntegralPilot/rustc_codegen_jvm.git
+cd rustc_codegen_jvm
+
+# Build all components using the build script.
+# This single command handles all dependencies and recompiles only what's necessary.
+
+# On Linux or macOS:
+./build.py all
+
+# On Windows, or if the above gives a "permission denied" error:
+python3 build.py all
+```
+
+This will intelligently build all necessary components in the correct order:
+
+-   The Kotlin library shim (`library/`)
+-   The shim metadata file (`core.json`)
+-   The `java-linker` executable
+-   The `rustc_codegen_jvm` backend library
+-   Configuration files (`config.toml`, `jvm-unknown-unknown.json`)
+-   Vendored dependencies like R8
+
+The script uses timestamp checking, so subsequent runs of `./build.py` will be very fast, only rebuilding parts of the project that have changed.
+
+---
+
+## 🚀 Usage
+
+1.  **Configure your project**
+    In *your* Rust project directory, create or update `.cargo/config.toml` by copying the generated template (it will be at the root of this repository after running the build script). Also, your `Cargo.toml` needs to contain the following (used to pass flags differentiating between debug and release builds to the linker):
+
+    ```toml
+    cargo-features = ["profile-rustflags"]
+    ```
+
+2.  **Build with Cargo**
+    ```bash
+    cargo build           # debug
+    cargo build --release # optimized
+    ```
+
+3.  **Run the `.jar`**
+    ```bash
+    java -jar target/debug/deps/your_crate*.jar # debug
+    java -jar target/release/deps/your_crate*.jar # release
+    ```
+
+---
+
+## 🧪 Running Tests
+
+Ensure the toolchain is built:
+
+```bash
+# On Linux/macOS:
+./build.py all
+
+# On Windows:
+python3 build.py all
+```
+
+Then, run the test suite:
+
+```bash
+# Run tests in debug mode
+python3 Tester.py
+
+# Run tests in release mode
+python3 Tester.py --release
+```
+
+Look for `✅ All tests passed!` or inspect `.generated` files on failure.
+
+---
+
+## 📂 Project Structure
+
+```
+.
+├── src/                      # rustc_codegen_jvm backend
+│   ├── lib.rs
+│   ├── lower1.rs             # MIR → OOMIR
+│   ├── lower2.rs             # OOMIR → JVM bytecode
+│   └── oomir.rs              # OOMIR definitions
+├── java-linker/              # Bundles .class files into .jar
+├── tests/binary/             # Integration tests
+├── library/                  # Kotlin shim for Rust core library
+├── shim-metadata-gen/        # Generates core.json metadata
+├── proguard/                 # .pro rules used for r8
+├── build.py                  # Main build script (replaces Makefile)
+├── config.toml.template
+├── jvm-unknown-unknown.json.template
+├── Tester.py                 # Test runner script
+└── LICENSE, LICENSE-Apache
+```
+
+---
+
+## 🤝 Contributing
+
+Contributions, issues & PRs welcome! :)
+
+---
+
+## 📄 License
+
+Dual‑licensed under **MIT** OR **Apache 2.0** at your option:
+<https://opensource.org/licenses/MIT>
+<https://www.apache.org/licenses/LICENSE-2.0>

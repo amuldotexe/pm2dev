@@ -1,0 +1,23 @@
+module M_divide
+  use creusot.int.UInt32
+  use creusot.prelude.Any
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec divide (y: UInt32.t) (x: UInt32.t) (return (x'0: UInt32.t)) = {[@stop_split] [@expl:divide requires] x
+    <> (0: UInt32.t)}
+    (! bb0
+    [ bb0 = s0
+      [ s0 = [ &_6 <- x ] s1
+      | s1 = [ &_7 <- _6 = (0: UInt32.t) ] s2
+      | s2 = {[@expl:division by zero] not _7} s3
+      | s3 = UInt32.div {y} {_6} (fun (_x: UInt32.t) -> [ &_ret <- _x ] s4)
+      | s4 = return {_ret} ] ]
+    [ & _ret: UInt32.t = Any.any_l ()
+    | & y: UInt32.t = y
+    | & x: UInt32.t = x
+    | & _6: UInt32.t = Any.any_l ()
+    | & _7: bool = Any.any_l () ]) [ return (result: UInt32.t) -> (! return {result}) ]
+end

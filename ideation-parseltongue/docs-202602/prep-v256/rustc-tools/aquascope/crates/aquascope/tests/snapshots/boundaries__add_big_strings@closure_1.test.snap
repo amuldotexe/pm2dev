@@ -1,0 +1,126 @@
+---
+source: crates/aquascope/tests/boundaries.rs
+description: add_big_strings@closure_1.test
+---
+- location:
+    line: 2
+    column: 9
+  expected:
+    read: true
+    write: false
+    drop: false
+  actual:
+    type_droppable: false
+    type_writeable: true
+    type_copyable: false
+    is_live: true
+    path_uninitialized: false
+    permissions:
+      read: true
+      write: true
+      drop: false
+- location:
+    line: 2
+    column: 33
+  expected:
+    read: true
+    write: false
+    drop: false
+  actual:
+    type_droppable: false
+    type_writeable: true
+    type_copyable: false
+    is_live: true
+    path_uninitialized: false
+    permissions:
+      read: true
+      write: true
+      drop: false
+- location:
+    line: 3
+    column: 13
+  expected:
+    read: true
+    write: false
+    drop: false
+  actual:
+    type_droppable: true
+    type_writeable: false
+    type_copyable: true
+    is_live: true
+    path_uninitialized: false
+    permissions:
+      read: true
+      write: false
+      drop: true
+- location:
+    line: 4
+    column: 12
+  expected:
+    read: true
+    write: false
+    drop: false
+  actual:
+    type_droppable: false
+    type_writeable: false
+    type_copyable: false
+    is_live: true
+    path_uninitialized: false
+    permissions:
+      read: true
+      write: false
+      drop: false
+- location:
+    line: 4
+    column: 28
+  expected:
+    read: true
+    write: false
+    drop: false
+  actual:
+    type_droppable: false
+    type_writeable: false
+    type_copyable: false
+    is_live: true
+    path_uninitialized: false
+    permissions:
+      read: true
+      write: false
+      drop: false
+- location:
+    line: 5
+    column: 15
+  expected:
+    read: true
+    write: true
+    drop: false
+  actual:
+    type_droppable: false
+    type_writeable: true
+    type_copyable: false
+    is_live: true
+    path_uninitialized: false
+    loan_write_refined: 0
+    loan_drop_refined: 0
+    permissions:
+      read: true
+      write: false
+      drop: false
+- location:
+    line: 5
+    column: 22
+  expected:
+    read: true
+    write: false
+    drop: false
+  actual:
+    type_droppable: false
+    type_writeable: false
+    type_copyable: false
+    is_live: true
+    path_uninitialized: false
+    permissions:
+      read: true
+      write: false
+      drop: false
+

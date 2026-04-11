@@ -1,0 +1,135 @@
+warning: data structure could derive additional traits
+  --> $DIR/main.rs:7:1
+   |
+LL | struct Derived;
+   | ^
+   |
+   = note: `#[warn(derive_opportunity)]` on by default
+help: precede with
+   |
+LL + #[derive(Clone, Copy, Hash)]
+LL | struct Derived;
+   |
+
+warning: data structure could derive additional traits
+  --> $DIR/main.rs:10:1
+   |
+LL | struct DerivedWithParam<T> {
+   | ^
+   |
+help: precede with
+   |
+LL + #[derive(Clone, Copy, Hash)]
+LL | struct DerivedWithParam<T> {
+   |
+
+warning: data structure could derive additional traits
+  --> $DIR/main.rs:14:1
+   |
+LL | struct Empty;
+   | ^
+   |
+help: precede with
+   |
+LL + #[derive(Clone, Copy, Default, Hash)]
+LL | struct Empty;
+   |
+
+warning: data structure could derive additional traits
+  --> $DIR/main.rs:16:1
+   |
+LL | struct SimpleStruct {
+   | ^
+   |
+help: precede with
+   |
+LL + #[derive(Clone, Copy, Default, Hash)]
+LL | struct SimpleStruct {
+   |
+
+warning: data structure could derive additional traits
+  --> $DIR/main.rs:20:1
+   |
+LL | enum SimpleEnum {
+   | ^
+   |
+help: precede with
+   |
+LL + #[derive(Clone, Copy, Hash)]
+LL | enum SimpleEnum {
+   |
+
+warning: data structure could derive additional traits
+  --> $DIR/main.rs:24:1
+   |
+LL | struct StructWithParam<T> {
+   | ^
+   |
+help: precede with
+   |
+LL + #[derive(Clone, Copy, Default, Hash)]
+LL | struct StructWithParam<T> {
+   |
+
+warning: data structure could derive additional traits
+  --> $DIR/main.rs:29:1
+   |
+LL | enum EnumWithParam<T> {
+   | ^
+   |
+help: precede with
+   |
+LL + #[derive(Clone, Copy, Hash)]
+LL | enum EnumWithParam<T> {
+   |
+
+warning: data structure could derive additional traits
+  --> $DIR/main.rs:34:1
+   |
+LL | struct TransitiveStruct {
+   | ^
+   |
+help: precede with
+   |
+LL + #[derive(Clone, Copy, Default, Hash)]
+LL | struct TransitiveStruct {
+   |
+
+warning: data structure could derive additional traits
+  --> $DIR/main.rs:38:1
+   |
+LL | enum TransitiveEnum {
+   | ^
+   |
+help: precede with
+   |
+LL + #[derive(Clone, Copy, Hash)]
+LL | enum TransitiveEnum {
+   |
+
+warning: data structure could derive additional traits
+  --> $DIR/main.rs:43:1
+   |
+LL | struct PartiallyDerivedStruct {
+   | ^
+   |
+help: precede with
+   |
+LL + #[derive(Clone, Copy, Hash)]
+LL | struct PartiallyDerivedStruct {
+   |
+
+warning: data structure could derive additional traits
+  --> $DIR/main.rs:48:1
+   |
+LL | enum PartiallyDerivedEnum {
+   | ^
+   |
+help: precede with
+   |
+LL + #[derive(Clone, Copy, Hash)]
+LL | enum PartiallyDerivedEnum {
+   |
+
+warning: 11 warnings emitted
+

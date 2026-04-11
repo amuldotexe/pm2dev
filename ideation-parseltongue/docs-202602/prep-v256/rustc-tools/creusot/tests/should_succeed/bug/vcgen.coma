@@ -1,0 +1,42 @@
+module M_set_max
+  use set.Fset
+  use int.Int
+  
+  predicate contains_Int [@inline:trivial] (self: Fset.fset int) (e: int) = Fset.mem e self
+  
+  meta "rewrite_def" predicate contains_Int
+  
+  function remove_Int [@inline:trivial] (self: Fset.fset int) (e: int) : Fset.fset int = Fset.remove e self
+  
+  meta "rewrite_def" function remove_Int
+  
+  predicate well_founded_relation_Int [@inline:trivial] (self: int) (other: int) = self >= 0 /\ self > other
+  
+  meta "rewrite_def" predicate well_founded_relation_Int
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  constant s : Fset.fset int
+  
+  function set_max (s: Fset.fset int) : int
+  
+  goal vc_set_max: not Fset.is_empty s
+    -> (let x = Fset.pick s in let s'0 = remove_Int s x in if Fset.is_empty s'0 then
+      let result = x in [@stop_split] [@expl:set_max ensures] ([@stop_split] [@expl:set_max ensures #0] contains_Int s result)
+      /\ ([@stop_split] [@expl:set_max ensures #1] forall o: int. contains_Int s o -> o <= result)
+    else
+      (([@stop_split] [@expl:set_max requires] not Fset.is_empty s'0)
+        /\ ([@expl:variant decreases] well_founded_relation_Int (Fset.cardinal s) (Fset.cardinal s'0)))
+      /\ (([@stop_split] [@expl:set_max ensures] ([@stop_split] [@expl:set_max ensures #0] contains_Int s'0 (set_max s'0))
+        /\ ([@stop_split] [@expl:set_max ensures #1] forall o: int. contains_Int s'0 o -> o <= set_max s'0))
+      -> (let rec' = set_max s'0 in if x >= rec' then
+        let result = x in [@stop_split] [@expl:set_max ensures] ([@stop_split] [@expl:set_max ensures #0] contains_Int s result)
+        /\ ([@stop_split] [@expl:set_max ensures #1] forall o: int. contains_Int s o -> o <= result)
+      else
+        let result = rec' in [@stop_split] [@expl:set_max ensures] ([@stop_split] [@expl:set_max ensures #0] contains_Int s result)
+        /\ ([@stop_split] [@expl:set_max ensures #1] forall o: int. contains_Int s o -> o <= result)
+      ))
+    )
+end

@@ -1,0 +1,35 @@
+module M_f
+  use creusot.prelude.Any
+  
+  type t_IfC
+  
+  predicate inv_IfC (_1: t_IfC)
+  
+  predicate resolve_IfC (_1: t_IfC)
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec f_IfC (_1: t_IfC) (return (x: ())) = {[@stop_split] [@expl:f '_1' type invariant] inv_IfC _1}
+    (! bb0
+    [ bb0 = s0
+      [ s0 = s1 [ _ck -> (! {[@expl:type invariant] inv_IfC _1} any) ]
+      | s1 = -{resolve_IfC _1}- s2
+      | s2 = return {_ret} ] ] [ & _ret: () = Any.any_l () | & _1: t_IfC = _1 ])
+    [ return (result: ()) -> (! return {result}) ]
+end
+module M_g
+  use creusot.int.Int32
+  use creusot.prelude.Any
+  
+  let rec f_i32 (_1: Int32.t) (return (x: ())) = any [ return (result: ()) -> (! return {result}) ]
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec g (return (x: ())) = (! bb0
+    [ bb0 = s0 [ s0 = f_i32 {(0: Int32.t)} (fun (_x: ()) -> [ &_ret <- _x ] s1) | s1 = return {_ret} ] ]
+    [ & _ret: () = Any.any_l () ]) [ return (result: ()) -> (! return {result}) ]
+end

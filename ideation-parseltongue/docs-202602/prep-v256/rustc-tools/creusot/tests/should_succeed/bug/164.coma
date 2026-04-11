@@ -1,0 +1,184 @@
+module M_main
+  use creusot.int.UInt64
+  use creusot.int.Int32
+  use seq.Seq
+  use creusot.prelude.MutBorrow
+  use creusot.prelude.Any
+  use int.Int
+  
+  type t_Ordering = Less | Equal | Greater
+  
+  function cmp_log_usize (self: UInt64.t) (o: UInt64.t) : t_Ordering = if UInt64.lt self o then
+      Less
+    else
+      if self = o then Equal else Greater
+  
+  
+  function eq_cmp_usize (x: UInt64.t) (y: UInt64.t) : ()
+  
+  axiom eq_cmp_usize_spec: forall x: UInt64.t, y: UInt64.t. (x = y) = (cmp_log_usize x y = Equal)
+  
+  function antisym2_usize (x: UInt64.t) (y: UInt64.t) : ()
+  
+  axiom antisym2_usize_spec: forall x: UInt64.t, y: UInt64.t. cmp_log_usize x y = Greater -> cmp_log_usize y x = Less
+  
+  function antisym1_usize (x: UInt64.t) (y: UInt64.t) : ()
+  
+  axiom antisym1_usize_spec: forall x: UInt64.t, y: UInt64.t. cmp_log_usize x y = Less -> cmp_log_usize y x = Greater
+  
+  function trans_usize (x: UInt64.t) (y: UInt64.t) (z: UInt64.t) (o: t_Ordering) : ()
+  
+  axiom trans_usize_spec: forall x: UInt64.t, y: UInt64.t, z: UInt64.t, o: t_Ordering. cmp_log_usize x y = o
+      -> cmp_log_usize y z = o -> cmp_log_usize x z = o
+  
+  function refl_usize (x: UInt64.t) : ()
+  
+  axiom refl_usize_spec: forall x: UInt64.t. cmp_log_usize x x = Equal
+  
+  function cmp_gt_log_usize (x: UInt64.t) (y: UInt64.t) : ()
+  
+  axiom cmp_gt_log_usize_spec: forall x: UInt64.t, y: UInt64.t. UInt64.gt x y = (cmp_log_usize x y = Greater)
+  
+  function cmp_ge_log_usize (x: UInt64.t) (y: UInt64.t) : ()
+  
+  axiom cmp_ge_log_usize_spec: forall x: UInt64.t, y: UInt64.t. UInt64.ge x y = (cmp_log_usize x y <> Less)
+  
+  function cmp_lt_log_usize (x: UInt64.t) (y: UInt64.t) : ()
+  
+  axiom cmp_lt_log_usize_spec: forall x: UInt64.t, y: UInt64.t. UInt64.lt x y = (cmp_log_usize x y = Less)
+  
+  function cmp_le_log_usize (x: UInt64.t) (y: UInt64.t) : ()
+  
+  axiom cmp_le_log_usize_spec: forall x: UInt64.t, y: UInt64.t. UInt64.le x y = (cmp_log_usize x y <> Greater)
+  
+  type t_Range_i32 = { start: Int32.t; end': Int32.t }
+  
+  let rec into_iter_Range_i32 (self_: t_Range_i32) (return (x: t_Range_i32)) = any
+    [ return (result: t_Range_i32) -> {[@stop_split] [@expl:into_iter ensures] result = self_} (! return {result}) ]
+  
+  predicate inv_Seq_i32 [@inline:trivial] (_1: Seq.seq Int32.t) = true
+  
+  meta "rewrite_def" predicate inv_Seq_i32
+  
+  function deep_model_i32 [@inline:trivial] (self: Int32.t) : int = Int32.to_int self
+  
+  meta "rewrite_def" function deep_model_i32
+  
+  predicate produces_Range_i32 (self: t_Range_i32) (visited: Seq.seq Int32.t) (o: t_Range_i32) =
+    self.end' = o.end'
+    /\ deep_model_i32 self.start <= deep_model_i32 o.start
+    /\ (Seq.length visited > 0 -> deep_model_i32 o.start <= deep_model_i32 o.end')
+    /\ Seq.length visited = deep_model_i32 o.start - deep_model_i32 self.start
+    /\ (forall i: int. 0 <= i /\ i < Seq.length visited
+      -> deep_model_i32 (Seq.get visited i) = deep_model_i32 self.start + i)
+  
+  function produces_trans_Range_i32 (a: t_Range_i32) (ab: Seq.seq Int32.t) (b: t_Range_i32) (bc: Seq.seq Int32.t) (c: t_Range_i32) : ()
+  
+  axiom produces_trans_Range_i32_spec:
+    forall a: t_Range_i32, ab: Seq.seq Int32.t, b: t_Range_i32, bc: Seq.seq Int32.t, c: t_Range_i32. produces_Range_i32 a ab b
+      -> produces_Range_i32 b bc c -> produces_Range_i32 a (Seq.(++) ab bc) c
+  
+  function produces_refl_Range_i32 (self: t_Range_i32) : ()
+  
+  axiom produces_refl_Range_i32_spec:
+    forall self: t_Range_i32. produces_Range_i32 self (Seq.empty: Seq.seq Int32.t) self
+  
+  type t_Option_i32 = None | Some Int32.t
+  
+  predicate resolve_refmut_Range_i32 [@inline:trivial] (_1: MutBorrow.t t_Range_i32) = _1.final = _1.current
+  
+  meta "rewrite_def" predicate resolve_refmut_Range_i32
+  
+  predicate completed_Range_i32 (self: MutBorrow.t t_Range_i32) =
+    resolve_refmut_Range_i32 self /\ deep_model_i32 self.current.start >= deep_model_i32 self.current.end'
+  
+  let rec next_Range_i32 (self_: MutBorrow.t t_Range_i32) (return (x: t_Option_i32)) = any
+    [ return (result: t_Option_i32) -> {[@stop_split] [@expl:next ensures] match result with
+        | None -> completed_Range_i32 self_
+        | Some v -> produces_Range_i32 self_.current (Seq.singleton v) self_.final
+        end}
+      (! return {result}) ]
+  
+  let rec elim_Some (_x: t_Option_i32) (return (f0: Int32.t)) = any
+    [ _k (f0: Int32.t) -> {Some f0 = _x} (! return {f0})
+    | _chk -> (! {[@expl:elim Some] match _x with
+        | Some _ -> true
+        | _ -> false
+        end}
+      any) ]
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec main (return (x: ())) = (! bb0
+    [ bb0 = s0
+      [ s0 = [ &x <- (0: UInt64.t) ] s1
+      | s1 = {[@expl:loop invariant] x = (0: UInt64.t)} s2
+      | s2 = [ &_7 <- x = (0: UInt64.t) ] s3
+      | s3 = any [ br0 -> {_7 = false} (! bb5) | br1 -> {_7} (! bb2) ] ]
+    | bb2 = s0 [ s0 = [ &x <- (1: UInt64.t) ] s1 | s1 = bb5 ]
+    | bb5 = s0
+      [ s0 = {[@expl:loop invariant] x = (1: UInt64.t)} s1
+      | s1 = [ &_15 <- x = (1: UInt64.t) ] s2
+      | s2 = any [ br0 -> {_15 = false} (! bb10) | br1 -> {_15} (! bb7) ] ]
+    | bb7 = s0 [ s0 = [ &x <- (2: UInt64.t) ] s1 | s1 = bb10 ]
+    | bb10 = s0 [ s0 = s1 | s1 = {[@expl:loop invariant] x = (2: UInt64.t)} s2 | s2 = bb16 ]
+    | bb16 = bb16
+      [ bb16 = (! s0
+        [ s0 = [ &_30 <- x <> (3: UInt64.t) ] s1 | s1 = any [ br0 -> {_30 = false} (! bb19) | br1 -> {_30} (! bb17) ] ])
+        [ bb17 = s0 [ s0 = [ &x <- (3: UInt64.t) ] s1 | s1 = bb16 ] ] ]
+    | bb19 = bb19
+      [ bb19 = {[@expl:loop invariant] UInt64.le x (4: UInt64.t)}
+        (! s0)
+        [ s0 = [ &_39 <- UInt64.lt x (4: UInt64.t) ] s1
+        | s1 = any [ br0 -> {_39 = false} (! bb26) | br1 -> {_39} (! bb22) ] ]
+        [ bb22 = s0
+          [ s0 = {[@expl:loop invariant] UInt64.le x (3: UInt64.t)} s1
+          | s1 = [ &x <- (4: UInt64.t) ] s2
+          | s2 = [ &_45 <- x = (4: UInt64.t) ] s3
+          | s3 = any [ br0 -> {_45 = false} (! bb24) | br1 -> {_45} (! bb19) ] ] ] ]
+    | bb24 = {false} any
+    | bb26 = s0 [ s0 = {[@expl:loop invariant] x = (4: UInt64.t)} s1 | s1 = bb28 ]
+    | bb28 = bb28
+      [ bb28 = (! s0
+        [ s0 = [ &_55 <- x <> (5: UInt64.t) ] s1 | s1 = any [ br0 -> {_55 = false} (! bb30) | br1 -> {_55} (! bb29) ] ])
+        [ bb29 = s0 [ s0 = [ &x <- (5: UInt64.t) ] s1 | s1 = bb28 ] ] ]
+    | bb30 = any [ br0 -> {false} (! bb33) | br1 -> (! bb33) ]
+    | bb33 = s0
+      [ s0 = [ &_63 <- { start = (0: Int32.t); end' = (10: Int32.t) } ] s1
+      | s1 = into_iter_Range_i32 {_63} (fun (_x: t_Range_i32) -> [ &iter <- _x ] s2)
+      | s2 = [ &iter_old <- iter ] s3
+      | s3 = [ &produced <- Seq.empty: Seq.seq Int32.t ] s4
+      | s4 = {[@expl:for invariant] inv_Seq_i32 produced} s5
+      | s5 = {[@expl:for invariant] produces_Range_i32 iter_old produced iter} s6
+      | s6 = {[@expl:loop invariant] x = (5: UInt64.t)} s7
+      | s7 = MutBorrow.borrow_mut <t_Range_i32> {iter}
+          (fun (_bor: MutBorrow.t t_Range_i32) -> [ &_82 <- _bor ] [ &iter <- _bor.final ] s8)
+      | s8 = MutBorrow.borrow_final <t_Range_i32> {_82.current} {MutBorrow.get_id _82}
+          (fun (_bor: MutBorrow.t t_Range_i32) -> [ &_81 <- _bor ] [ &_82 <- { _82 with current = _bor.final } ] s9)
+      | s9 = next_Range_i32 {_81} (fun (_x: t_Option_i32) -> [ &_80 <- _x ] s10)
+      | s10 = -{resolve_refmut_Range_i32 _82}- s11
+      | s11 = any [ br0 -> {_80 = None} (! bb44) | br1 (x0: Int32.t) -> {_80 = Some x0} (! bb42) ] ]
+    | bb42 = s0
+      [ s0 = elim_Some {_80} (fun (r0: Int32.t) -> [ &__creusot_proc_iter_elem <- r0 ] s1)
+      | s1 = [ &produced <- Seq.(++) produced (Seq.singleton __creusot_proc_iter_elem) ] s2
+      | s2 = return {_ret} ]
+    | bb44 = return {_ret} ]
+    [ & _ret: () = Any.any_l ()
+    | & x: UInt64.t = Any.any_l ()
+    | & _7: bool = Any.any_l ()
+    | & _15: bool = Any.any_l ()
+    | & _30: bool = Any.any_l ()
+    | & _39: bool = Any.any_l ()
+    | & _45: bool = Any.any_l ()
+    | & _55: bool = Any.any_l ()
+    | & iter: t_Range_i32 = Any.any_l ()
+    | & _63: t_Range_i32 = Any.any_l ()
+    | & iter_old: t_Range_i32 = Any.any_l ()
+    | & produced: Seq.seq Int32.t = Any.any_l ()
+    | & _80: t_Option_i32 = Any.any_l ()
+    | & _81: MutBorrow.t t_Range_i32 = Any.any_l ()
+    | & _82: MutBorrow.t t_Range_i32 = Any.any_l ()
+    | & __creusot_proc_iter_elem: Int32.t = Any.any_l () ]) [ return (result: ()) -> (! return {result}) ]
+end

@@ -1,0 +1,48 @@
+[package]
+name = "clippy"
+version = "5.0.0"
+authors = ["Samuel E. Moelius III <sam@moeli.us>"]
+description = "All of the Clippy lints as a Dylint library"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+clippy_config = { git = "https://github.com/rust-lang/rust-clippy", rev = "54482290b5f32e6c6b57cc9e0a17153f432b0036" }
+clippy_lints = { git = "https://github.com/rust-lang/rust-clippy", rev = "54482290b5f32e6c6b57cc9e0a17153f432b0036" }
+clippy_utils = { git = "https://github.com/rust-lang/rust-clippy", rev = "54482290b5f32e6c6b57cc9e0a17153f432b0036" }
+declare_clippy_lint = { git = "https://github.com/rust-lang/rust-clippy", rev = "54482290b5f32e6c6b57cc9e0a17153f432b0036" }
+serde_json = "1.0"
+
+dylint_internal = { path = "../../../internal" }
+dylint_linting = { path = "../../../utils/linting" }
+
+[dev-dependencies]
+anyhow = "1.0"
+cargo_metadata = "0.23"
+env_logger = "0.11"
+log = "0.4"
+tempfile = "3.23"
+
+dylint = { path = "../../../dylint" }
+dylint_internal = { path = "../../../internal", features = ["git"] }
+dylint_testing = { path = "../../../utils/testing" }
+
+[lints.rust.unexpected_cfgs]
+level = "deny"
+check-cfg = ["cfg(dylint_lib, values(any()))"]
+
+[package.metadata.rust-analyzer]
+rustc_private = true
+
+[workspace]
+
+[workspace.metadata.dylint]
+libraries = [
+    { path = "../../general" },
+    { path = "../../supplementary" },
+    { path = "../../testing/clippy" },
+    { path = "../../restriction/*" },
+]

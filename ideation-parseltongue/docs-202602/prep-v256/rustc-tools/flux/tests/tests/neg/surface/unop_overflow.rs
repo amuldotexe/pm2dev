@@ -1,0 +1,6 @@
+#![flux::opts(check_overflow = "strict")]
+
+#[flux::sig(fn(a: i32) -> i32[-a])]
+pub fn neg_overflow_i32(a: i32) -> i32 {
+    -a //~ ERROR overflow
+}

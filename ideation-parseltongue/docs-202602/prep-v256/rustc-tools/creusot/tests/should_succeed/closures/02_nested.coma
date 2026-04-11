@@ -1,0 +1,45 @@
+module M_nested_closure
+  use creusot.prelude.Any
+  
+  type closure0 = { c0: bool }
+  
+  let rec closure0 [@coma:extspec] (self: closure0) (return (x: bool)) = bb0
+    [ bb0 = s0 [ s0 = [ &_ret <- self.c0 ] s1 | s1 = return {_ret} ] ]
+    [ & _ret: bool = Any.any_l () | & self: closure0 = self ] [ return (result: bool) -> return {result} ]
+  
+  meta "rewrite_def" predicate closure0'pre
+  
+  meta "rewrite_def" predicate closure0'post'return
+  
+  type closure0'0 = { c0'0: bool }
+  
+  let rec closure0'0 [@coma:extspec] (self: closure0'0) (return (x: bool)) = bb0
+    [ bb0 = s0
+      [ s0 = [ &omg <- { c0 = self.c0'0 } ] s1
+      | s1 = closure0 {omg} (fun (_x: bool) -> [ &_ret <- _x ] s2)
+      | s2 = return {_ret} ] ]
+    [ & _ret: bool = Any.any_l ()
+    | & self: closure0'0 = self
+    | & omg: closure0 = Any.any_l ()
+    | & _5: () = Any.any_l () ] [ return (result: bool) -> return {result} ]
+  
+  meta "rewrite_def" predicate closure0'0'pre
+  
+  meta "rewrite_def" predicate closure0'0'post'return
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec nested_closure (return (x: ())) = (! bb0
+    [ bb0 = s0
+      [ s0 = [ &a <- true ] s1
+      | s1 = [ &_4 <- { c0'0 = a } ] s2
+      | s2 = closure0'0 {_4} (fun (_x: bool) -> [ &_a <- _x ] s3)
+      | s3 = return {_ret} ] ]
+    [ & _ret: () = Any.any_l ()
+    | & a: bool = Any.any_l ()
+    | & _a: bool = Any.any_l ()
+    | & _4: closure0'0 = Any.any_l ()
+    | & _6: () = Any.any_l () ]) [ return (result: ()) -> (! return {result}) ]
+end

@@ -1,0 +1,1447 @@
+//! This module translates [FMIR](crate::translation::fmir) programs to why3.
+//!
+//! Each `into_why` function in this module translates a specific FMIR structure. These
+//! functions may take a `istmts` parameter of type [`&mut Vec<IntermediateStmt>`](IntermediateStmt),
+//! because one FMIR statement may correspond to a coma expression with multiple steps.
+//!
+//! They also take a [`lower: &mut LoweringState<'_, 'tcx, N>`](LoweringState) that is in
+//! charge of avoiding naming conficts (very much needed, since we generate additional
+//! intermediate variables here) and carrying the context (for e.g. typing information).
+
+use crate::{
+    backend::{
+        Why3Generator,
+        clone_map::{Namer, PreMod},
+        common_meta_decls,
+        dependency::Dependency,
+        is_trusted_item,
+        optimization::optimizations,
+        projections::{Focus, borrow_generated_id, projections_to_expr},
+        signature::lower_program_sig,
+        term::{lower_pure, unsupported_cast},
+        ty::{
+            constructor, floatty_to_prelude, int, ity_to_prelude, sign_extend, translate_ty,
+            ty_to_prelude, uty_to_prelude,
+        },
+        ty_inv::{is_tyinv_trivial, sig_add_type_invariant_spec},
+        wto::{Component, weak_topological_order},
+    },
+    contracts_items::Intrinsic,
+    ctx::{BodyId, Dependencies, HasTyCtxt as _},
+    naming::name,
+    translated_item::FileModule,
+    translation::{
+        fmir::{
+            Block, Body, BorrowKind, Branches, LocalDecls, LocalKind, Operand, Place, RValue,
+            Statement, StatementKind, Terminator,
+        },
+        pearlite::Term,
+        traits::TraitResolved,
+    },
+};
+use indexmap::IndexMap;
+use petgraph::graphmap::DiGraphMap;
+use rustc_abi::VariantIdx;
+use rustc_hir::{
+    Safety,
+    def::DefKind,
+    def_id::{DefId, LocalDefId},
+};
+use rustc_middle::{
+    mir::{BasicBlock, BinOp, PlaceTy, ProjectionElem, START_BLOCK, UnOp},
+    ty::{self, AdtDef, GenericArgs, GenericArgsRef, Ty, TyCtxt, TyKind},
+};
+use rustc_span::{DUMMY_SP, Span};
+use rustc_type_ir::IntTy;
+use std::{collections::HashMap, fmt::Debug, iter::once};
+use why3::{
+    Ident, Name,
+    coma::{Arg, Defn, Expr, IsRef, Param, Prototype, Var},
+    declaration::{Attribute, Contract, Decl, Module},
+    exp::{Binder, Constant, Exp},
+    ty::Type,
+};
+
+pub(crate) fn translate_function<'tcx>(
+    ctx: &Why3Generator<'tcx>,
+    def_id: DefId,
+) -> Option<FileModule> {
+    let names = Dependencies::new(ctx, def_id);
+
+    if !def_id.is_local() || !ctx.has_body(def_id) || is_trusted_item(ctx.tcx, def_id) {
+        return None;
+    }
+
+    let name = names.source_ident();
+    let mut defn = to_why(ctx, &names, name, def_id.expect_local());
+
+    let namespace_ty = names.namespace_ty();
+
+    let (mut decls, setters) = names.provide_deps(ctx);
+    defn.body = setters.call_setters(defn.body);
+    decls.extend(common_meta_decls());
+    decls.push(Decl::Coma(defn));
+
+    let attrs = ctx.span_attr(ctx.def_span(def_id)).into_iter().collect();
+    let meta = ctx.display_impl_of(def_id);
+    let path = ctx.module_path(def_id);
+    let name = path.why3_ident();
+
+    if ctx.used_namespaces.get() {
+        let mut new_decls = ctx.generate_namespace_type(namespace_ty);
+        new_decls.extend(std::mem::take(&mut decls));
+        decls = new_decls;
+    }
+
+    Some(FileModule { path, modl: Module { name, decls: decls.into(), attrs, meta } })
+}
+
+pub(crate) fn val(sig: Prototype, contract: Contract, return_ty: why3::ty::Type) -> Decl {
+    let name = sig.name.name().to_string();
+    let mut body = Expr::var(name::return_()).app([Arg::Term(Exp::var(name::result()))]);
+    body = Expr::assert(contract.ensures_conj(&name), body.black_box());
+
+    let params = [Param::Term(name::result(), return_ty)].into();
+    let body = Expr::Defn(
+        Expr::assert(contract.requires_conj(&name), Expr::Any).boxed(),
+        false,
+        [Defn { prototype: Prototype { name: name::return_(), attrs: vec![], params }, body }]
+            .into(),
+    );
+    Decl::Coma(Defn { prototype: Prototype { attrs: Vec::new(), ..sig }, body })
+}
+
+// TODO: move to a more "central" location
+pub(crate) fn node_graph(x: &Body) -> petgraph::graphmap::DiGraphMap<BasicBlock, ()> {
+    let mut graph = DiGraphMap::default();
+    for (bb, data) in &x.blocks {
+        graph.add_node(*bb);
+        for tgt in data.terminator.targets() {
+            graph.add_edge(*bb, tgt, ());
+        }
+    }
+
+    graph
+}
+
+/// Translate a program function body to why3.
+pub(crate) fn to_why<'tcx>(
+    ctx: &Why3Generator<'tcx>,
+    names: &impl Namer<'tcx>,
+    name: Ident,
+    body_id: LocalDefId,
+) -> Defn {
+    let def_id = body_id.to_def_id();
+
+    // The function receives name::return_ as an argument handler and
+    // redefines it in an handler that wraps it with the postcondition:
+    //
+    // let rec f ... return =
+    //   ... return result ...
+    //   [ return x -> {postcondition} (! return x ) ]
+    let sig = ctx.sig(def_id);
+    let args = sig.inputs.iter().map(|(name, _, _)| name.0).collect::<Box<[_]>>();
+    let body_id = BodyId::local(body_id);
+    let mut recursive_calls = RecursiveCalls::new();
+    let mut body =
+        why_body(ctx, names, body_id, None, &args, name::return_(), &mut recursive_calls);
+    let (mut sig, variant) = {
+        let typing_env = names.typing_env();
+        let mut pre_sig = sig.clone().normalize(ctx, typing_env);
+        let variant = pre_sig.contract.variant.clone();
+        sig_add_type_invariant_spec(
+            ctx,
+            names.typing_env(),
+            names.source_id(),
+            &mut pre_sig,
+            def_id,
+        );
+        (lower_program_sig(ctx, names, name, pre_sig, def_id, name::return_()), variant)
+    };
+
+    let fmir_body = ctx.fmir_body(body_id).clone();
+    let variant_name = fmir_body.function_variant;
+
+    // variant handler
+    if let Some(variant_expr) = variant {
+        // If the function has a variant, recursive calls go through a special
+        // local handler that shadows the function:
+        //
+        // ```
+        // let rec f (x) (ret) =
+        //   ... f'0 {x} ret ...
+        //   [ f'0 (x) (ret) -> { x < variant } f {x} ret ]
+        //   [ variant : int = ... ]
+        //   [ inner_return ... ]
+        // ```
+        let variant = {
+            let subst = ctx.tcx.mk_args(&[variant_expr.ty.into()]);
+            let wf_relation = Intrinsic::WellFoundedRelation.get(ctx);
+            let typing_env = ctx.typing_env(body_id.def_id);
+            let (wf_relation, subst) =
+                TraitResolved::resolve_item(ctx.tcx, typing_env, wf_relation, subst)
+                    .to_opt(wf_relation, subst)
+                    .expect("The `WellFounded` trait should be implemented in this context");
+            let variant_decreases = Term::call(
+                ctx.tcx,
+                typing_env,
+                wf_relation,
+                subst,
+                [Term::var(variant_name, variant_expr.ty), variant_expr.spanned()],
+            );
+            lower_pure(ctx, names, &variant_decreases)
+                .with_attr(Attribute::Attr("expl:function variant".to_string()))
+        };
+
+        for (def_id, (fun_name, params, ret_ty)) in recursive_calls {
+            assert!(
+                def_id == body_id.def_id,
+                "Only simple recursion is allowed at the moment, and this should be checked earlier"
+            );
+            let params: Box<[_]> = params
+                .into_iter()
+                .zip(&sig.prototype.params)
+                .map(|(ty, param)| Param::Term(param.as_term().0, ty))
+                .chain(std::iter::once(Param::Cont(
+                    Ident::fresh_local("_k"),
+                    [].into(),
+                    [Param::Term(Ident::fresh_local("_ret"), ret_ty)].into(),
+                )))
+                .collect();
+            let args: Box<[_]> = params
+                .iter()
+                .map(|p| match p {
+                    Param::Term(ident, _) => Arg::Term(Exp::Var(Name::local(*ident))),
+                    Param::Cont(ident, _, _) => Arg::Cont(Expr::var(*ident)),
+                    _ => unreachable!(),
+                })
+                .collect();
+
+            body = Expr::Defn(
+                body.boxed(),
+                false,
+                [Defn {
+                    prototype: Prototype {
+                        name: fun_name.clone().to_ident(),
+                        attrs: Vec::new(),
+                        params,
+                    },
+                    body: Expr::Assert(
+                        // assert the variant
+                        variant.clone().boxed(),
+                        // call the function with the same args
+                        Expr::app(Expr::name(fun_name), args).boxed(),
+                    ),
+                }]
+                .into(),
+            );
+        }
+    } else if !recursive_calls.is_empty() {
+        ctx.dcx().span_bug(ctx.def_span(body_id.def_id), "missing variant for function");
+    }
+
+    if let Some((exp, ty)) = sig.variant {
+        body = body.let_(std::iter::once(Var(variant_name.0, ty, exp, IsRef::NotRef)))
+    }
+
+    let mut ret = Expr::var(name::return_()).app([Arg::Term(Exp::var(name::result()))]);
+
+    // We remove the barrier around the definition of closures without contracts
+    // (automatic inferrence of specifications)
+    if ctx.is_closure_like(def_id) && !ctx.sig(def_id).contract.has_user_contract {
+        sig.prototype.attrs.push(Attribute::Attr("coma:extspec".into()));
+    } else {
+        body = body.black_box();
+        ret = ret.black_box();
+    }
+
+    let name = name.name().to_string();
+    let postcond = Expr::assert(sig.contract.ensures_conj(&name), ret);
+    body = Expr::Defn(
+        body.boxed(),
+        false,
+        [Defn {
+            prototype: Prototype {
+                name: name::return_(),
+                attrs: vec![],
+                params: [Param::Term(name::result(), sig.return_ty)].into(),
+            },
+            body: postcond,
+        }]
+        .into(),
+    );
+    body = Expr::assert(sig.contract.requires_conj(&name), body);
+
+    Defn { prototype: sig.prototype, body }
+}
+
+/// # Parameters
+///
+/// - `recursive_calls`: collects the calls matching [`TranslationCtx::should_check_variant_decreases`].
+pub fn why_body<'tcx>(
+    ctx: &Why3Generator<'tcx>,
+    names: &impl Namer<'tcx>,
+    body_id: BodyId,
+    subst: Option<GenericArgsRef<'tcx>>,
+    params: &[Ident],
+    inner_return: Ident,
+    recursive_calls: &mut RecursiveCalls,
+) -> Expr {
+    let mut body = ctx.fmir_body(body_id).clone();
+    body = if let Some(subst) = subst {
+        ty::EarlyBinder::bind(body).instantiate(ctx.tcx, subst)
+    } else {
+        body
+    };
+    let block_idents: IndexMap<BasicBlock, Ident> = body
+        .blocks
+        .iter()
+        .map(|(blk, _)| (*blk, Ident::fresh_local(format!("bb{}", blk.as_usize()))))
+        .collect();
+
+    // Remember the index of every argument before removing unused variables in optimizations
+    let arg_index = body
+        .locals
+        .iter()
+        .flat_map(
+            |(id, decl)| if let LocalKind::Param { .. } = decl.kind { Some(*id) } else { None },
+        )
+        .enumerate()
+        .map(|(i, k)| (k, i))
+        .collect::<HashMap<_, _>>();
+
+    optimizations(ctx, &mut body, names.source_id(), names.typing_env());
+
+    let wto = weak_topological_order(&node_graph(&body), START_BLOCK);
+
+    let blocks: Box<[Defn]> = wto
+        .into_iter()
+        .map(|c| {
+            component_to_defn(
+                &mut body,
+                recursive_calls,
+                ctx,
+                names,
+                body_id.def_id,
+                &block_idents,
+                inner_return,
+                c,
+            )
+        })
+        .collect();
+
+    // Bind local variables in the body
+    let vars: Box<[_]> = body
+        .locals
+        .into_iter()
+        .map(|(id, decl)| {
+            let ty = translate_ty(ctx, names, decl.span, decl.ty);
+            let init = if let LocalKind::Param { .. } = decl.kind {
+                Exp::var(params[arg_index[&id]])
+            } else {
+                Exp::qvar(names.in_pre(PreMod::Any, "any_l")).app([Exp::unit()])
+            };
+            Var(id, ty.clone(), init, IsRef::Ref)
+        })
+        .chain(body.variant_locals.into_iter().map(|(ident, ty, span)| {
+            let ty = translate_ty(ctx, names, span, ty);
+            Var(
+                ident.0,
+                ty,
+                Exp::qvar(names.in_pre(PreMod::Any, "any_l")).app([Exp::unit()]),
+                IsRef::Ref,
+            )
+        }))
+        .collect();
+    Expr::Defn(Expr::var(block_idents[0]).boxed(), true, blocks).let_(vars)
+}
+
+/// Translate the group of blocks `c` to a coma definition.
+///
+/// Such groups of blocks will typically be loops, that need to be separated
+/// into their own group of handlers.
+fn component_to_defn<'tcx>(
+    body: &mut Body<'tcx>,
+    recursive_calls: &mut RecursiveCalls,
+    ctx: &Why3Generator<'tcx>,
+    names: &impl Namer<'tcx>,
+    def_id: DefId,
+    block_idents: &IndexMap<BasicBlock, Ident>,
+    return_ident: Ident,
+    c: Component<BasicBlock>,
+) -> Defn {
+    let lower =
+        LoweringState { ctx, names, locals: &body.locals, def_id, block_idents, return_ident };
+    let (head, tl) = match c {
+        Component::Simple(v) => {
+            let block = body.blocks.swap_remove(&v).unwrap();
+            return block.into_why(&lower, recursive_calls, v);
+        }
+        Component::Complex(head, tl) => (head, tl),
+    };
+
+    let block = body.blocks.shift_remove(&head).unwrap();
+    let variant = block.variant.clone().map(|variant| {
+        let wf_relation = Intrinsic::WellFoundedRelation.get(ctx);
+        let typing_env = ctx.typing_env(lower.def_id);
+        assert_eq!(GenericArgs::identity_for_item(ctx.tcx, wf_relation).len(), 1); // sanity check
+        let subst = ctx.tcx.mk_args(&[variant.term.ty.into()]);
+
+        let (wf_relation, subst) =
+            TraitResolved::resolve_item(ctx.tcx, typing_env, wf_relation, subst)
+                .to_opt(wf_relation, subst)
+                .expect("The `WellFounded` trait should be implemented in this context");
+        let variant_decreases = Term::call_no_normalize(
+            ctx.tcx,
+            wf_relation,
+            subst,
+            [Term::var(variant.old_name, variant.term.ty), variant.term.spanned()],
+        );
+
+        lower_pure(ctx, lower.names, &variant_decreases)
+            .with_attr(Attribute::Attr("expl:loop variant".to_string()))
+    });
+    let mut block = block.into_why(&lower, recursive_calls, head);
+
+    let defns = tl
+        .into_iter()
+        .map(|id| {
+            component_to_defn(
+                body,
+                recursive_calls,
+                ctx,
+                names,
+                def_id,
+                block_idents,
+                return_ident,
+                id,
+            )
+        })
+        .collect();
+
+    if !block.body.is_guarded() {
+        block.body = block.body.black_box();
+    }
+
+    // We separate a loop into three components:
+    // - the loop entry itself, only used from outside (bbx)
+    // - the loop variant, check on reentry in the loop (bbx'0, shadowing of bbx)
+    // - the loop invariant, check on every entry in the loop (bbxinvariant)
+    //
+    // So the coma code looks like
+    // ```coma
+    // bbx = bbxinvariant
+    // [ bbx'0 = { check variant } bbxinvariant |
+    //   bbxinvariant = { check invariant } ( ! loop_body )
+    // ]
+    // ```
+    // where `loop_body` may jump to bbx'0
+    let inner = block.body.boxed().where_(defns);
+    if let Some(variant) = variant {
+        let new_name =
+            Ident::fresh_local(format!("{}invariant", block.prototype.name.name().to_string()));
+        let variant_expr = Expr::assert(variant, Expr::var(new_name));
+        block.body = Expr::Defn(
+            Expr::var(new_name).boxed(),
+            true,
+            [Defn::simple(block.prototype.name, variant_expr), Defn::simple(new_name, inner)]
+                .into(),
+        );
+    } else {
+        block.body = Expr::Defn(
+            Expr::var(block.prototype.name).boxed(),
+            true,
+            [Defn::simple(block.prototype.name, inner)].into(),
+        );
+    };
+
+    block
+}
+
+/// Keep the recursive calls, so that we generate the right handlers.
+type RecursiveCalls = IndexMap<DefId, (Name, Vec<Type>, Type)>;
+
+/// State to pass around when lowering a function from FMIR to Coma.
+struct LoweringState<'a, 'tcx, N: Namer<'tcx>> {
+    ctx: &'a Why3Generator<'tcx>,
+    names: &'a N,
+    locals: &'a LocalDecls<'tcx>,
+    /// Id of the function (or promoted) we are lowering.
+    def_id: DefId,
+    block_idents: &'a IndexMap<BasicBlock, Ident>,
+    return_ident: Ident,
+}
+
+impl<'tcx, N: Namer<'tcx>> LoweringState<'_, 'tcx, N> {
+    pub(super) fn ty(&self, ty: Ty<'tcx>) -> Type {
+        translate_ty(self.ctx, self.names, DUMMY_SP, ty)
+    }
+
+    fn assignment(
+        &self,
+        lhs: &Place<'tcx>,
+        rhs: Exp,
+        istmts: &mut Vec<IntermediateStmt>,
+        span: Span,
+    ) {
+        let (_, constructor) = projections_to_expr(
+            self.ctx,
+            self.names,
+            istmts,
+            &mut PlaceTy::from_ty(self.locals[&lhs.local].ty),
+            Focus::new(|_| Exp::var(lhs.local)),
+            Box::new(|_, x| x),
+            &lhs.projection,
+            span,
+        );
+
+        let rhs = constructor(istmts, rhs);
+        istmts.push(IntermediateStmt::Assign(lhs.local, rhs));
+    }
+
+    fn rplace_to_expr(&self, pl: &Place<'tcx>, istmts: &mut Vec<IntermediateStmt>) -> Exp {
+        let (rhs, _) = projections_to_expr(
+            self.ctx,
+            self.names,
+            istmts,
+            &mut PlaceTy::from_ty(self.locals[&pl.local].ty),
+            Focus::new(|_| Exp::var(pl.local)),
+            Box::new(|_, _| unreachable!()),
+            &pl.projection,
+            self.ctx.tcx.def_span(self.def_id),
+        );
+        rhs.call(istmts)
+    }
+}
+
+impl<'tcx> Operand<'tcx> {
+    fn into_why(
+        self,
+        lower: &LoweringState<'_, 'tcx, impl Namer<'tcx>>,
+        istmts: &mut Vec<IntermediateStmt>,
+    ) -> Exp {
+        match self {
+            Operand::Place(pl) => lower.rplace_to_expr(&pl, istmts),
+            Operand::ShrBorrow(op) => op.into_why(lower, istmts),
+            Operand::Term(c, _) => lower_pure(lower.ctx, lower.names, &c.spanned()),
+            Operand::InlineConst(def_id, promoted, subst, ty) => {
+                let ret = Ident::fresh_local("_const_ret");
+                let result = Ident::fresh_local("_const");
+                let body_id = BodyId { def_id, promoted };
+                let defn = why_body(
+                    lower.ctx,
+                    lower.names,
+                    body_id,
+                    subst,
+                    &[],
+                    ret,
+                    &mut RecursiveCalls::new(),
+                );
+                let ty = lower.ty(ty);
+                istmts.push(IntermediateStmt::Expr(defn, ret, result, ty));
+                Exp::var(result)
+            }
+        }
+    }
+}
+
+impl<'tcx> RValue<'tcx> {
+    /// Translate a `RValue` from FMIR to Why3.
+    fn into_why(
+        self,
+        span: Span,
+        lower: &LoweringState<'_, 'tcx, impl Namer<'tcx>>,
+        ty: Ty<'tcx>,
+        istmts: &mut Vec<IntermediateStmt>,
+    ) -> Exp {
+        match self {
+            RValue::Operand(op) => op.into_why(lower, istmts),
+            RValue::BinOp(op, l, r) => {
+                let l_ty = l.ty(lower.ctx.tcx, lower.locals);
+
+                match (op, l_ty.kind()) {
+                    (_, TyKind::Float(_)) => (),
+                    (BinOp::Eq, _) => {
+                        return l.into_why(lower, istmts).eq(r.into_why(lower, istmts));
+                    }
+                    (BinOp::Ne, _) => {
+                        return l.into_why(lower, istmts).neq(r.into_why(lower, istmts));
+                    }
+                    _ => (),
+                }
+
+                let prelude = ty_to_prelude(lower.ctx.tcx, l_ty.kind());
+
+                // shifts need to convert the right operand
+                let r = match op {
+                    // right operand must be converted to integer
+                    BinOp::Shl | BinOp::ShlUnchecked | BinOp::Shr | BinOp::ShrUnchecked => {
+                        let r_ty = r.ty(lower.ctx.tcx, lower.locals);
+
+                        // rust allows shifting by a value of any integer type
+                        // so we need to import the prelude for the right operand
+                        let qname = match r_ty.kind() {
+                            TyKind::Int(ity) => {
+                                lower.names.in_pre(ity_to_prelude(lower.ctx.tcx, *ity), "to_int")
+                            }
+                            TyKind::Uint(uty) => {
+                                lower.names.in_pre(uty_to_prelude(lower.ctx.tcx, *uty), "t'int")
+                            }
+                            _ => unreachable!(
+                                "right operand, non-integer type for binary operation {op:?} {ty:?}"
+                            ),
+                        };
+
+                        // build the expression for this convertion
+                        Exp::qvar(qname).app([r.into_why(lower, istmts)])
+                    }
+                    _ => r.into_why(lower, istmts),
+                };
+
+                enum OpKind {
+                    Program,
+                    Logic,
+                    /// A logic function which outputs a pair
+                    LogicPair,
+                }
+                use BinOp::*;
+                use OpKind::*;
+                let (opname, opkind) = match op {
+                    Add | AddUnchecked => ("add", Program),
+                    Sub | SubUnchecked => ("sub", Program),
+                    Mul | MulUnchecked => ("mul", Program),
+                    Div => ("div", Program),
+                    Rem => ("rem", Program),
+                    Shl | ShlUnchecked => ("shl", Program),
+                    Shr | ShrUnchecked => ("shr", Program),
+
+                    Eq => ("eq", Logic),
+                    Ne => ("ne", Logic),
+                    Lt => ("lt", Logic),
+                    Le => ("le", Logic),
+                    Ge => ("ge", Logic),
+                    Gt => ("gt", Logic),
+                    BitXor => ("bw_xor", Logic),
+                    BitAnd => ("bw_and", Logic),
+                    BitOr => ("bw_or", Logic),
+                    AddWithOverflow => ("add_with_overflow", LogicPair),
+                    SubWithOverflow => ("sub_with_overflow", LogicPair),
+                    MulWithOverflow => ("mul_with_overflow", LogicPair),
+
+                    Cmp => lower.ctx.span_bug(span, format!("Unsupported binary operation {op:?}")),
+                    Offset => lower.ctx.span_bug(span, "pointer offsets are unsupported"),
+                };
+
+                let fname = lower.names.in_pre(prelude, opname);
+                let args = [l.into_why(lower, istmts), r];
+
+                match opkind {
+                    Logic => Exp::qvar(fname).app(args),
+                    Program => {
+                        let ret_ident = Ident::fresh_local("_x");
+                        istmts.push(IntermediateStmt::call_span(
+                            ret_ident,
+                            lower.ty(ty),
+                            Name::Global(fname),
+                            args.map(Arg::Term),
+                            span,
+                        ));
+                        Exp::var(ret_ident)
+                    }
+                    LogicPair => {
+                        let TyKind::Tuple(tys) = ty.kind() else { unreachable!() };
+                        let fst = Ident::fresh_local("_fst");
+                        let snd = Ident::fresh_local("_snd");
+                        use why3::exp::Pattern::{TupleP, VarP};
+                        Exp::Let {
+                            pattern: TupleP([VarP(fst), VarP(snd)].into()),
+                            arg: Exp::qvar(fname).app(args).boxed(),
+                            body: Exp::Record {
+                                fields: [(0usize, fst), (1, snd)]
+                                    .into_iter()
+                                    .map(|(ix, f)| {
+                                        (
+                                            Name::local(lower.names.tuple_field(tys, ix.into())),
+                                            Exp::var(f),
+                                        )
+                                    })
+                                    .collect(),
+                            }
+                            .boxed(),
+                        }
+                    }
+                }
+            }
+            RValue::UnaryOp(UnOp::Not, arg) => {
+                let a_ty = arg.ty(lower.ctx.tcx, lower.locals);
+                match a_ty.kind() {
+                    TyKind::Bool => arg.into_why(lower, istmts).not(),
+                    TyKind::Int(_) | TyKind::Uint(_) => {
+                        let prelude: PreMod = match a_ty.kind() {
+                            TyKind::Int(ity) => ity_to_prelude(lower.ctx.tcx, *ity),
+                            TyKind::Uint(uty) => uty_to_prelude(lower.ctx.tcx, *uty),
+                            _ => unreachable!("this is not an executable path {ty:?}"),
+                        };
+
+                        Exp::qvar(lower.names.in_pre(prelude, "bw_not"))
+                            .app(vec![arg.into_why(lower, istmts)])
+                    }
+                    _ => unreachable!("the not operator is not supported for {ty:?}"),
+                }
+            }
+            RValue::UnaryOp(UnOp::Neg, arg) => {
+                let prelude: PreMod = match ty.kind() {
+                    TyKind::Int(ity) => ity_to_prelude(lower.ctx.tcx, *ity),
+                    TyKind::Float(fty) => floatty_to_prelude(*fty),
+                    _ => unreachable!("non-primitive type for negation {ty:?}"),
+                };
+
+                let neg = lower.names.in_pre(prelude, "neg");
+                let ret_ident = Ident::fresh_local("_x");
+                let arg = Arg::Term(arg.into_why(lower, istmts));
+                istmts.push(IntermediateStmt::call(
+                    ret_ident,
+                    lower.ty(ty),
+                    Name::Global(neg),
+                    [arg],
+                ));
+                Exp::var(ret_ident)
+            }
+            RValue::Constructor(id, subst, args) => {
+                if lower.ctx.def_kind(id) == DefKind::Closure {
+                    lower.names.dependency(Dependency::Item(id, subst));
+                }
+                let args = args.into_iter().map(|a| a.into_why(lower, istmts)).collect();
+                constructor(lower.names, args, id, subst)
+            }
+            RValue::Tuple(flds) if flds.is_empty() => Exp::unit(),
+            RValue::Tuple(flds) if flds.len() == 1 => {
+                flds.into_iter().next().unwrap().into_why(lower, istmts)
+            }
+            RValue::Tuple(flds) => {
+                let TyKind::Tuple(tys) = ty.kind() else { unreachable!() };
+                Exp::Record {
+                    fields: flds
+                        .into_iter()
+                        .enumerate()
+                        .map(|(ix, f)| {
+                            (
+                                Name::local(lower.names.tuple_field(tys, ix.into())),
+                                f.into_why(lower, istmts),
+                            )
+                        })
+                        .collect(),
+                }
+            }
+            RValue::Cast(e, source, target)
+                if let Some(source) = source.builtin_deref(false)
+                    && let Some(target) = target.builtin_deref(false)
+                    && let TyKind::Dynamic(_, _) = target.kind() =>
+            {
+                let cast = lower.names.dyn_cast(source, target);
+                Exp::var(cast).app(vec![e.into_why(lower, istmts)])
+            }
+            RValue::Cast(e, source, target) => {
+                match source.kind() {
+                    TyKind::Bool => {
+                        let prelude = match target.kind() {
+                            TyKind::Int(ity) => ity_to_prelude(lower.ctx.tcx, *ity),
+                            TyKind::Uint(uty) => uty_to_prelude(lower.ctx.tcx, *uty),
+                            _ => unsupported_cast(lower.ctx, span, source, target),
+                        };
+                        let arg = e.into_why(lower, istmts);
+                        Exp::qvar(lower.names.in_pre(prelude, "of_bool")).app(vec![arg])
+                    }
+                    TyKind::Int(_) | TyKind::Uint(_) => {
+                        // convert source to BV256.t / int
+                        let to_fname = match source.kind() {
+                            TyKind::Int(ity) => {
+                                let fct_name =
+                                    if lower.names.bitwise_mode() { "to_BV256" } else { "to_int" };
+                                lower.names.in_pre(ity_to_prelude(lower.ctx.tcx, *ity), fct_name)
+                            }
+                            TyKind::Uint(ity) => {
+                                let fct_name =
+                                    if lower.names.bitwise_mode() { "to_BV256" } else { "t'int" };
+                                lower.names.in_pre(uty_to_prelude(lower.ctx.tcx, *ity), fct_name)
+                            }
+                            _ => unsupported_cast(lower.ctx, span, source, target),
+                        };
+                        let to_exp = Exp::qvar(to_fname).app(vec![e.into_why(lower, istmts)]);
+
+                        // convert BV256.t / int to target
+                        let of_fname = match target.kind() {
+                            TyKind::Int(ity) => {
+                                let fct_name =
+                                    if lower.names.bitwise_mode() { "of_BV256" } else { "of_int" };
+                                lower.names.in_pre(ity_to_prelude(lower.ctx.tcx, *ity), fct_name)
+                            }
+                            TyKind::Uint(uty) => {
+                                let fct_name =
+                                    if lower.names.bitwise_mode() { "of_BV256" } else { "of_int" };
+                                lower.names.in_pre(uty_to_prelude(lower.ctx.tcx, *uty), fct_name)
+                            }
+                            TyKind::Char => {
+                                let fct_name =
+                                    if lower.names.bitwise_mode() { "of_BV256" } else { "of_int" };
+                                lower.names.in_pre(PreMod::Char, fct_name)
+                            }
+                            _ => unsupported_cast(lower.ctx, span, source, target),
+                        };
+
+                        // create final statement
+                        let of_ret_id = Ident::fresh_local("_x");
+                        istmts.push(IntermediateStmt::call(
+                            of_ret_id,
+                            lower.ty(ty),
+                            Name::Global(of_fname),
+                            [Arg::Term(to_exp)],
+                        ));
+                        Exp::var(of_ret_id)
+                    }
+                    // Pointer-to-pointer casts
+                    TyKind::RawPtr(ty1, _) if let TyKind::RawPtr(ty2, _) = target.kind() => {
+                        match ptr_cast_kind(lower.ctx.tcx, lower.names.typing_env(), ty1, ty2) {
+                            PtrCastKind::Id => e.into_why(lower, istmts),
+                            PtrCastKind::Thin => {
+                                Exp::qvar(lower.names.in_pre(PreMod::Opaque, "thin"))
+                                    .app([e.into_why(lower, istmts)])
+                            }
+                            PtrCastKind::Unknown => {
+                                unsupported_cast(lower.ctx, span, source, target)
+                            }
+                        }
+                    }
+                    _ => unsupported_cast(lower.ctx, span, source, target),
+                }
+            }
+            RValue::Array(fields) => {
+                let id = Ident::fresh_local("__arr_temp");
+                let ty = lower.ty(ty);
+
+                let len = fields.len();
+
+                let record = Exp::var(id).boxed();
+                let label = Name::Global(lower.names.in_pre(PreMod::Slice, "elts"));
+                let arr_elts = Exp::RecField { record, label };
+
+                istmts.push(IntermediateStmt::Any(id, ty.clone()));
+                let mut assumptions = fields
+                    .into_iter()
+                    .enumerate()
+                    .map(|(ix, f)| {
+                        Exp::qvar(name::seq_get())
+                            .app([arr_elts.clone(), Exp::Const(Constant::Int(ix as i128, None))])
+                            .eq(f.into_why(lower, istmts))
+                    })
+                    .chain([Exp::qvar(name::seq_length())
+                        .app([arr_elts.clone()])
+                        .eq(Exp::Const(Constant::Int(len as i128, None)))])
+                    .reduce(Exp::log_and)
+                    .expect("array literal missing assumption");
+                assumptions.reassociate();
+
+                istmts.push(IntermediateStmt::Assume(assumptions));
+                Exp::var(id)
+            }
+            RValue::Repeat(e, len) => {
+                let args = [
+                    Arg::Ty(lower.ty(e.ty(lower.ctx.tcx, lower.locals))),
+                    Arg::Term(len.into_why(lower, istmts)),
+                    Arg::Term(Exp::Lam(
+                        [Binder::wild(int(lower.ctx, lower.names))].into(),
+                        e.into_why(lower, istmts).boxed(),
+                    )),
+                ];
+                let res_ident = Ident::fresh_local("_res");
+                istmts.push(IntermediateStmt::call(
+                    res_ident,
+                    lower.ty(ty),
+                    Name::Global(lower.names.in_pre(PreMod::Slice, "create")),
+                    args,
+                ));
+
+                Exp::var(res_ident)
+            }
+            RValue::UnaryOp(UnOp::PtrMetadata, op) => {
+                match op.ty(lower.ctx.tcx, lower.locals).kind() {
+                    TyKind::Ref(_, ty, mu) => {
+                        assert!(ty.is_slice());
+                        let mut op = op.into_why(lower, istmts);
+                        if mu.is_mut() {
+                            op = op.field(Name::Global(name::current()))
+                        }
+                        Exp::qvar(lower.names.in_pre(PreMod::Slice, "length")).app([op])
+                    }
+                    TyKind::RawPtr(ty, _) => {
+                        assert!(ty.is_slice());
+                        Exp::qvar(lower.names.in_pre(PreMod::Slice, "slice_ptr_len"))
+                            .app([op.into_why(lower, istmts)])
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            RValue::Ptr(pl) => {
+                let ptr_ident = Ident::fresh_local("_ptr");
+                istmts.push(IntermediateStmt::call(
+                    ptr_ident,
+                    lower.ty(ty),
+                    Name::Global(lower.names.in_pre(PreMod::Opaque, "fresh_ptr")),
+                    [],
+                ));
+
+                if pl.ty(lower.ctx.tcx, lower.locals).is_slice() {
+                    let lhs = Exp::qvar(lower.names.in_pre(PreMod::Slice, "slice_ptr_len"))
+                        .app([Exp::var(ptr_ident)]); // TODO This was not caught by the test suite
+                    let rhs = Exp::qvar(lower.names.in_pre(PreMod::Slice, "length"))
+                        .app([lower.rplace_to_expr(&pl, istmts)]);
+                    istmts.push(IntermediateStmt::Assume(lhs.eq(rhs)));
+                }
+
+                Exp::var(ptr_ident)
+            }
+        }
+    }
+}
+
+impl<'tcx> Terminator<'tcx> {
+    fn into_why(
+        self,
+        lower: &LoweringState<'_, 'tcx, impl Namer<'tcx>>,
+    ) -> (Vec<IntermediateStmt>, Expr) {
+        let mut istmts = vec![];
+        let exp = match self {
+            Terminator::Goto(bb) => Expr::var(*lower.block_idents.get(&bb).unwrap()),
+            Terminator::Switch(switch, branches) => {
+                let ty = switch.ty(lower.ctx.tcx, lower.locals);
+                let discr = switch.into_why(lower, &mut istmts);
+                branches.into_why(lower, discr, &ty)
+            }
+            Terminator::Return => {
+                let p = *lower.locals.get_index(0).unwrap().0;
+                Expr::var(lower.return_ident).app([Arg::Term(Exp::var(p))])
+            }
+            Terminator::Abort(span) => {
+                let mut exp = Exp::mk_false();
+                if let Some(attr) = lower.names.span_attr(span) {
+                    exp = exp.with_attr(attr);
+                };
+                Expr::assert(exp, Expr::Any)
+            }
+        };
+        (istmts, exp)
+    }
+}
+
+impl<'tcx> Branches<'tcx> {
+    fn into_why(
+        self,
+        lower: &LoweringState<'_, 'tcx, impl Namer<'tcx>>,
+        discr: Exp,
+        discr_ty: &Ty<'tcx>,
+    ) -> Expr {
+        let LoweringState { ctx, names, block_idents, .. } = *lower;
+        match self {
+            Branches::Int(brs, def) => {
+                let TyKind::Int(ity) = discr_ty.kind() else {
+                    panic!("Branches::Int try to evaluate a type that is not Int")
+                };
+                // Collect (expr, target) pairs to avoid iterating twice
+                let branches: Vec<_> = brs
+                    .into_iter()
+                    .map(|(mut val, tgt)| {
+                        let why_ty =
+                            Type::qconstructor(names.in_pre(ity_to_prelude(ctx.tcx, *ity), "t"));
+                        let e = if names.bitwise_mode() {
+                            // In bitwise mode, integers are bit vectors, whose literals are always unsigned
+                            if val < 0 && *ity != IntTy::I128 {
+                                let target_width = ctx.tcx.sess.target.pointer_width;
+                                val += 1 << ity.normalize(target_width).bit_width().unwrap();
+                            }
+                            Exp::Const(Constant::Uint(val as u128, Some(why_ty)))
+                        } else {
+                            Exp::Const(Constant::Int(sign_extend(val, *ity), Some(why_ty)))
+                        };
+                        (e, mk_goto(block_idents, tgt))
+                    })
+                    .collect();
+                // Build assumption for default branch: discr != val1 && discr != val2 && ...
+                let default_assumption = branches
+                    .iter()
+                    .map(|(e, _)| discr.clone().neq(e.clone()))
+                    .rfold(Exp::mk_true(), |acc, e| e.log_and(acc));
+                let brs = mk_switch_branches(discr, branches).chain([Defn::simple(
+                    Ident::fresh_local("default"),
+                    Expr::assume(default_assumption, mk_goto(block_idents, def).black_box()),
+                )]);
+                Expr::Defn(Expr::Any.boxed(), false, brs.collect())
+            }
+            Branches::Uint(brs, def) => {
+                let uty = match discr_ty.kind() {
+                    TyKind::Uint(uty) => uty,
+                    _ => panic!("Branches::Uint try to evaluate a type that is not Uint"),
+                };
+                // Collect (expr, target) pairs to avoid iterating twice
+                let branches: Vec<_> = brs
+                    .into_iter()
+                    .map(|(val, tgt)| {
+                        let why_ty =
+                            Type::qconstructor(names.in_pre(uty_to_prelude(ctx.tcx, *uty), "t"));
+                        let e = Exp::Const(Constant::Uint(val, Some(why_ty)));
+                        (e, mk_goto(block_idents, tgt))
+                    })
+                    .collect();
+                // Build assumption for default branch: discr != val1 && discr != val2 && ...
+                let default_assumption = branches
+                    .iter()
+                    .map(|(e, _)| discr.clone().neq(e.clone()))
+                    .rfold(Exp::mk_true(), |acc, e| e.log_and(acc));
+                let brs = mk_switch_branches(discr, branches)
+                    .chain([Defn::simple(
+                        Ident::fresh_local("default"),
+                        Expr::assume(default_assumption, mk_goto(block_idents, def).black_box()),
+                    )])
+                    .collect();
+                Expr::Defn(Expr::Any.boxed(), false, brs)
+            }
+            Branches::Constructor(adt, substs, vars, def) => {
+                let brs = mk_adt_switch(lower, adt, substs, discr, vars, def);
+                Expr::Defn(Expr::Any.boxed(), false, brs)
+            }
+            Branches::Bool(f, t) => {
+                let brs = mk_switch_branches(
+                    discr,
+                    vec![
+                        (Exp::mk_false(), mk_goto(block_idents, f)),
+                        (Exp::mk_true(), mk_goto(block_idents, t)),
+                    ],
+                );
+
+                Expr::Defn(Expr::Any.boxed(), false, brs.collect())
+            }
+        }
+    }
+}
+
+fn mk_goto(block_idents: &IndexMap<BasicBlock, Ident>, bb: BasicBlock) -> Expr {
+    Expr::var(*block_idents.get(&bb).unwrap())
+}
+
+fn mk_adt_switch<'tcx>(
+    lower: &LoweringState<'_, 'tcx, impl Namer<'tcx>>,
+    adt: AdtDef<'tcx>,
+    subst: GenericArgsRef<'tcx>,
+    discr: Exp,
+    brch: Box<[(VariantIdx, BasicBlock)]>,
+    default: Option<BasicBlock>,
+) -> Box<[Defn]> {
+    assert!(adt.is_enum());
+
+    let LoweringState { ctx, names, block_idents, .. } = *lower;
+    let mut brch = brch.into_iter().peekable();
+
+    let res = adt
+        .variants()
+        .iter_enumerated()
+        .map(|(ix, var)| {
+            let tgt = if brch.peek().is_some_and(|&(vix, _)| vix == ix) {
+                brch.next().unwrap().1
+            } else {
+                default.unwrap()
+            };
+
+            let (params, ids): (Vec<_>, Vec<_>) = var
+                .fields
+                .iter_enumerated()
+                .map(|(ix, field)| {
+                    let id: Ident = Ident::fresh_local(format!("x{}", ix.as_usize()));
+                    (
+                        Param::Term(
+                            id,
+                            translate_ty(ctx, names, DUMMY_SP, field.ty(ctx.tcx, subst)),
+                        ),
+                        Exp::var(id),
+                    )
+                })
+                .unzip();
+
+            let cons = names.item_ident(var.def_id, subst);
+            let body = Exp::var(cons).app(ids);
+            let body = Expr::assert(discr.clone().eq(body), mk_goto(block_idents, tgt).black_box());
+            let name = Ident::fresh_local(format!("br{}", ix.as_usize()));
+
+            Defn { prototype: Prototype { name, params: params.into(), attrs: vec![] }, body }
+        })
+        .collect();
+    assert!(brch.next().is_none());
+    res
+}
+
+fn mk_switch_branches(
+    discr: Exp,
+    brch: impl IntoIterator<Item = (Exp, Expr)>,
+) -> impl Iterator<Item = Defn> {
+    brch.into_iter().enumerate().map(move |(ix, (cond, tgt))| {
+        let filter = Expr::assert(discr.clone().eq(cond), tgt.black_box());
+        Defn::simple(Ident::fresh_local(format!("br{ix}")), filter)
+    })
+}
+
+impl<'tcx> Block<'tcx> {
+    /// Translate a FMIR block to coma.
+    fn into_why(
+        self,
+        lower: &LoweringState<'_, 'tcx, impl Namer<'tcx>>,
+        recursive_calls: &mut RecursiveCalls,
+        id: BasicBlock,
+    ) -> Defn {
+        let mut statements = vec![];
+
+        let cont0 = Ident::fresh_local("s0");
+        let mut cont = cont0;
+        for (ix, s) in self.stmts.into_iter().enumerate() {
+            let stmt = s.into_why(lower, recursive_calls);
+            let old_cont = cont;
+            cont = Ident::fresh_local(format!("s{}", ix + 1));
+            let body = assemble_intermediates(lower.names, stmt.into_iter(), Expr::var(cont));
+            statements.push(Defn::simple(old_cont, body));
+        }
+
+        let (istmts, terminator) = self.terminator.into_why(lower);
+        let body = assemble_intermediates(lower.names, istmts.into_iter(), terminator);
+        statements.push(Defn::simple(cont, body));
+
+        let mut body = Expr::var(cont0);
+        if let Some(variant) = self.variant {
+            let term = lower_pure(lower.ctx, lower.names, &variant.term.spanned());
+            body = body.assign(variant.old_name.0, term);
+        }
+        if !self.invariants.is_empty() {
+            body = body.black_box();
+        }
+
+        for i in self.invariants.into_iter().rev() {
+            body = Expr::assert(
+                lower_pure(lower.ctx, lower.names, &i.inv.spanned())
+                    .with_attr(Attribute::Attr(i.expl)),
+                body,
+            );
+        }
+
+        body = body.where_(statements.into());
+
+        Defn::simple(*lower.block_idents.get(&id).unwrap(), body)
+    }
+}
+
+/// Combine `exp` and the statements `istmts` into one coma expression.
+fn assemble_intermediates<'tcx, I>(names: &impl Namer<'tcx>, istmts: I, exp: Expr) -> Expr
+where
+    I: IntoIterator<Item = IntermediateStmt>,
+    I: DoubleEndedIterator<Item = IntermediateStmt>,
+{
+    istmts.rfold(exp, |tail, stmt| match stmt {
+        IntermediateStmt::Assign(id, exp) => tail.assign(id, exp),
+        IntermediateStmt::Call(params, fun, args, span) => {
+            let span = span.and_then(|span| names.span(span));
+            Expr::Name(fun, span)
+                .app(args.into_iter().chain([Arg::Cont(Expr::Lambda(params, tail.boxed()))]))
+        }
+        IntermediateStmt::Assume(e) => Expr::assume(e, tail),
+        IntermediateStmt::Assert(e) => Expr::assert(e, tail),
+        IntermediateStmt::Check(e) => Expr::Defn(
+            tail.boxed(),
+            false,
+            [Defn::simple(Ident::fresh_local("_ck"), Expr::assert(e, Expr::Any).black_box())]
+                .into(),
+        ),
+        IntermediateStmt::Expr(expr, k, x, ty) => Expr::Defn(
+            expr.into(),
+            false,
+            [Defn { prototype: Prototype::new(k, [Param::Term(x, ty)]), body: tail }].into(),
+        ),
+        IntermediateStmt::Any(id, ty) => Expr::Defn(
+            Expr::Any.boxed(),
+            false,
+            [Defn {
+                prototype: Prototype::new(Ident::fresh_local("any_"), [Param::Term(id, ty)]),
+                body: tail.black_box(),
+            }]
+            .into(),
+        ),
+    })
+}
+
+#[derive(Debug)]
+pub(crate) enum IntermediateStmt {
+    // [id = E] K
+    Assign(Ident, Exp),
+    // E [ARGS] (id: ty -> K)
+    Call(Box<[Param]>, Name, Box<[Arg]>, Option<Span>),
+    /// `E [ K (X : T) -> _ ]`
+    Expr(Expr /* E */, Ident /* K */, Ident /* X */, Type /* T */),
+    // -{ E }- K
+    Assume(Exp),
+    // { E } K
+    Assert(Exp),
+    // K [ _ck -> ! {E} any ]
+    Check(Exp),
+
+    Any(Ident, Type),
+}
+
+impl IntermediateStmt {
+    fn call(id: Ident, ty: Type, f: Name, args: impl IntoIterator<Item = Arg>) -> Self {
+        Self::call_(id, ty, f, args, None)
+    }
+
+    fn call_span(
+        id: Ident,
+        ty: Type,
+        f: Name,
+        args: impl IntoIterator<Item = Arg>,
+        span: Span,
+    ) -> Self {
+        Self::call_(id, ty, f, args, Some(span))
+    }
+
+    fn call_(
+        id: Ident,
+        ty: Type,
+        f: Name,
+        args: impl IntoIterator<Item = Arg>,
+        span: Option<Span>,
+    ) -> Self {
+        IntermediateStmt::Call([Param::Term(id, ty)].into(), f, args.into_iter().collect(), span)
+    }
+}
+
+impl<'tcx> Statement<'tcx> {
+    fn into_why(
+        self,
+        lower: &LoweringState<'_, 'tcx, impl Namer<'tcx>>,
+        recursive_calls: &mut RecursiveCalls,
+    ) -> Vec<IntermediateStmt> {
+        let mut istmts = Vec::new();
+        match self.kind {
+            StatementKind::MutBorrow(bor_kind, lhs, rhs) => {
+                let bor_id_arg;
+                let rhs_rplace;
+                let rhs_constr;
+
+                let mut place_ty = PlaceTy::from_ty(lower.locals[&rhs.local].ty);
+                if let BorrowKind::Final(deref_index) = bor_kind {
+                    let (original_borrow, original_borrow_constr) = projections_to_expr(
+                        lower.ctx,
+                        lower.names,
+                        &mut istmts,
+                        &mut place_ty,
+                        Focus::new(|_| Exp::var(rhs.local)),
+                        Box::new(|_, x| x),
+                        &rhs.projection[..deref_index],
+                        self.span,
+                    );
+                    let mid_ty = place_ty.ty;
+                    assert_eq!(place_ty.variant_index, None);
+                    let (foc, constr) = projections_to_expr(
+                        lower.ctx,
+                        lower.names,
+                        &mut istmts,
+                        &mut place_ty,
+                        original_borrow.clone(),
+                        original_borrow_constr,
+                        &rhs.projection[deref_index..],
+                        self.span,
+                    );
+                    rhs_rplace = foc.call(&mut istmts);
+                    rhs_constr = constr;
+
+                    let borrow_id = borrow_generated_id(
+                        lower.ctx,
+                        lower.names,
+                        original_borrow.call(&mut istmts),
+                        self.span,
+                        &mut PlaceTy::from_ty(mid_ty.builtin_deref(true).unwrap()),
+                        &rhs.projection[deref_index + 1..],
+                        |sym| (Exp::var(sym.0), lower.ctx.types.usize),
+                    );
+
+                    bor_id_arg = Some(Arg::Term(borrow_id));
+                } else {
+                    let (foc, constr) = projections_to_expr(
+                        lower.ctx,
+                        lower.names,
+                        &mut istmts,
+                        &mut place_ty,
+                        Focus::new(|_| Exp::var(rhs.local)),
+                        Box::new(|_, x| x),
+                        &rhs.projection,
+                        self.span,
+                    );
+                    rhs_rplace = foc.call(&mut istmts);
+                    rhs_constr = constr;
+                    bor_id_arg = None;
+                }
+
+                let rhs_ty = rhs.ty(lower.ctx.tcx, lower.locals);
+                let ret_ident = Ident::fresh_local("_bor");
+                let reassign = Exp::var(ret_ident).field(Name::Global(name::final_()));
+
+                let inv_assume;
+                if !is_tyinv_trivial(
+                    lower.ctx,
+                    lower.names.source_id(),
+                    lower.names.typing_env(),
+                    rhs_ty,
+                    self.span,
+                ) {
+                    let inv_did = Intrinsic::Inv.get(lower.ctx);
+                    let subst = lower.ctx.tcx.mk_args(&[ty::GenericArg::from(rhs_ty)]);
+                    let inv = Exp::var(lower.names.item_ident(inv_did, subst));
+                    istmts.push(IntermediateStmt::Check(
+                        inv.clone()
+                            .app([rhs_rplace.clone()])
+                            .with_attr(Attribute::Attr(format!("expl:type invariant"))),
+                    ));
+                    inv_assume = Some(IntermediateStmt::Assume(inv.app([reassign.clone()])))
+                } else {
+                    inv_assume = None
+                };
+
+                let func = lower.names.in_pre(
+                    PreMod::MutBor,
+                    match bor_kind {
+                        BorrowKind::Mut => "borrow_mut",
+                        BorrowKind::Final(_) => "borrow_final",
+                    },
+                );
+                let args = [Arg::Ty(lower.ty(rhs_ty)), Arg::Term(rhs_rplace)]
+                    .into_iter()
+                    .chain(bor_id_arg);
+                let lhs_ty = lower.ty(lhs.ty(lower.ctx.tcx, lower.locals));
+                istmts.push(IntermediateStmt::call(ret_ident, lhs_ty, Name::Global(func), args));
+                lower.assignment(&lhs, Exp::var(ret_ident), &mut istmts, self.span);
+
+                istmts.extend(inv_assume);
+
+                let new_rhs = rhs_constr(&mut istmts, reassign);
+                istmts.push(IntermediateStmt::Assign(rhs.local, new_rhs));
+            }
+            StatementKind::Assignment(lhs, e) => {
+                let rhs =
+                    e.into_why(self.span, lower, lhs.ty(lower.ctx.tcx, lower.locals), &mut istmts);
+                lower.assignment(&lhs, rhs, &mut istmts, self.span);
+            }
+            StatementKind::Call(dest, fun_id, subst, args, span) => {
+                let params =
+                    args.iter().map(|a| lower.ty(a.ty(lower.ctx.tcx, lower.locals))).collect();
+                let (fun_qname, args) = func_call_to_why3(lower, fun_id, subst, args, &mut istmts);
+                let ty = dest.ty(lower.ctx.tcx, lower.locals);
+                let ty = lower.ty(ty);
+                if lower.ctx.should_check_variant_decreases(lower.def_id, fun_id) {
+                    if !subst.types().eq(GenericArgs::identity_for_item(
+                        lower.ctx.tcx,
+                        lower.def_id,
+                    )
+                    .types())
+                    {
+                        lower.ctx.dcx().span_err(self.span, "Polymorphic recursion is not supported: recursive calls should have the same type parameters.");
+                    } else {
+                        recursive_calls.insert(fun_id, (fun_qname.clone(), params, ty.clone()));
+                    }
+                }
+                let ret_ident = Ident::fresh_local("_x");
+                istmts.push(IntermediateStmt::call_span(ret_ident, ty, fun_qname, args, span));
+                lower.assignment(&dest, Exp::var(ret_ident), &mut istmts, self.span);
+            }
+            StatementKind::Assertion { cond, msg, check, assume } => {
+                let mut e = lower_pure(lower.ctx, lower.names, &cond.spanned());
+                if let Some(msg) = msg {
+                    e = e.with_attr(Attribute::Attr(msg))
+                }
+                match (check, assume) {
+                    (true, true) => istmts.push(IntermediateStmt::Assert(e)),
+                    (true, false) => istmts.push(IntermediateStmt::Check(e)),
+                    (false, true) => istmts.push(IntermediateStmt::Assume(e)),
+                    (false, false) => (),
+                }
+            }
+        }
+        istmts
+    }
+}
+
+fn func_call_to_why3<'tcx>(
+    lower: &LoweringState<'_, 'tcx, impl Namer<'tcx>>,
+    id: DefId,
+    subst: GenericArgsRef<'tcx>,
+    args: Box<[Operand<'tcx>]>,
+    istmts: &mut Vec<IntermediateStmt>,
+) -> (Name, Box<[Arg]>) {
+    // TODO: Perform this simplification earlier
+    // Eliminate "rust-call" ABI
+    let args: Box<[_]> = if lower.ctx.is_closure_like(id) {
+        assert!(args.len() == 2, "closures should only have two arguments (env, args)");
+        let [arg, Operand::Place(pl)] = *args.into_array().unwrap() else { panic!() };
+
+        let real_sig = lower.ctx.signature_unclosure(subst.as_closure().sig(), Safety::Safe);
+
+        once(Arg::Term(arg.into_why(lower, istmts)))
+            .chain(real_sig.inputs().iter().enumerate().map(|(ix, inp)| {
+                let inp = lower.ctx.instantiate_bound_regions_with_erased(inp.map_bound(|&x| x));
+                let projection = pl
+                    .projection
+                    .iter()
+                    .copied()
+                    .chain([ProjectionElem::Field(ix.into(), inp)])
+                    .collect();
+                Arg::Term(Operand::Place(Place { projection, ..pl }).into_why(lower, istmts))
+            }))
+            .collect()
+    } else {
+        args.into_iter().map(|a| a.into_why(lower, istmts)).map(Arg::Term).collect()
+    };
+
+    (lower.names.item(id, subst), args)
+}
+
+/// Pointer-to-pointer casts
+/// Reference: https://doc.rust-lang.org/reference/expressions/operator-expr.html#r-expr.as.pointer
+pub enum PtrCastKind {
+    /// thin-to-thin or fat-to-fat pointer casts are the identity
+    Id,
+    /// any-to-thin casts: may specialize to thin-to-thin (identity) or fat-to-thin (strip metadata)
+    /// Translates to `Opaque.thin` in Why3.
+    Thin,
+    /// Unknown casts. Type checking should prevent this, so we just error if we somehow encounter this.
+    Unknown,
+}
+
+/// Determine the kind of pointer cast between `*Ty1` and `*Ty2`.
+pub fn ptr_cast_kind<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    typing_env: ty::TypingEnv<'tcx>,
+    ty1: &Ty<'tcx>,
+    ty2: &Ty<'tcx>,
+) -> PtrCastKind {
+    // TODO: is using `is_sized` correct? Its doc says "it can be an overapproximation in generic contexts".
+    // https://doc.rust-lang.org/beta/nightly-rustc/rustc_middle/ty/struct.Ty.html#method.is_sized
+    // We really want it to be `true` only if the type is `Sized` so its pointers are known to be thin.
+    let sized1 = ty1.is_sized(tcx, typing_env);
+    let sized2 = ty2.is_sized(tcx, typing_env);
+    // If ty2 is unsized, then ty1 is also unsized.
+    // Otherwise this cast wouldn't have type checked and the compiler would have failed earlier.
+    if sized1 && sized2 || is_unsized(ty2) || ty1 == ty2 {
+        PtrCastKind::Id
+    } else if sized2 {
+        PtrCastKind::Thin
+    } else {
+        PtrCastKind::Unknown
+    }
+}
+
+/// If `true`, this is definitely an unsized type, so pointers to it must be fat.
+/// If `false`, nothing is known for sure.
+pub fn is_unsized(ty: &Ty) -> bool {
+    matches!(ty.kind(), TyKind::Str | TyKind::Slice(_) | TyKind::Dynamic(_, _))
+}

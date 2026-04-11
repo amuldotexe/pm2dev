@@ -1,0 +1,34 @@
+---
+source: crates/aquascope/tests/boundaries.rs
+description: missing_constraint@missing_constraint.test
+---
+- location:
+    line: 2
+    column: 2
+  expected:
+    read: true
+    write: false
+    drop: false
+  actual:
+    type_droppable: false
+    type_writeable: false
+    type_copyable: true
+    is_live: true
+    path_uninitialized: false
+    permissions:
+      read: true
+      write: false
+      drop: false
+  expecting_flow:
+    is_violation: true
+    flow_context:
+      start:
+        line: 2
+        column: 2
+      end:
+        line: 2
+        column: 3
+      filename:
+        private: 0
+    kind: MissingUniversalConstraint
+

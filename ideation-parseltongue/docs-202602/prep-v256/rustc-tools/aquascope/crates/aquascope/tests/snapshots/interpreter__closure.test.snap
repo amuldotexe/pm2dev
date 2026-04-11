@@ -1,0 +1,379 @@
+---
+source: crates/aquascope/tests/interpreter.rs
+description: closure.test
+---
+steps:
+  - stack:
+      frames:
+        - name: main
+          body_span:
+            start:
+              line: 0
+              column: 0
+            end:
+              line: 4
+              column: 1
+            filename:
+              private_use_as_methods_instead: 0
+          location:
+            start:
+              line: 0
+              column: 0
+            end:
+              line: 0
+              column: 9
+            filename:
+              private_use_as_methods_instead: 0
+          locals: []
+    heap:
+      locations: []
+  - stack:
+      frames:
+        - name: main
+          body_span:
+            start:
+              line: 0
+              column: 0
+            end:
+              line: 4
+              column: 1
+            filename:
+              private_use_as_methods_instead: 0
+          location:
+            start:
+              line: 1
+              column: 2
+            end:
+              line: 1
+              column: 12
+            filename:
+              private_use_as_methods_instead: 0
+          locals:
+            - name: x
+              value:
+                type: Int
+                value: 0
+              moved_paths: []
+    heap:
+      locations: []
+  - stack:
+      frames:
+        - name: main
+          body_span:
+            start:
+              line: 0
+              column: 0
+            end:
+              line: 4
+              column: 1
+            filename:
+              private_use_as_methods_instead: 0
+          location:
+            start:
+              line: 2
+              column: 2
+            end:
+              line: 2
+              column: 15
+            filename:
+              private_use_as_methods_instead: 0
+          locals:
+            - name: x
+              value:
+                type: Int
+                value: 0
+              moved_paths: []
+            - name: f
+              value:
+                type: Adt
+                value:
+                  name: "main::{closure#0}"
+                  variant: ~
+                  fields:
+                    - - x
+                      - type: Pointer
+                        value:
+                          path:
+                            segment:
+                              type: Stack
+                              value:
+                                frame: 0
+                                local: x
+                            parts: []
+                          range: ~
+                  alloc_kind: ~
+              moved_paths: []
+    heap:
+      locations: []
+  - stack:
+      frames:
+        - name: main
+          body_span:
+            start:
+              line: 0
+              column: 0
+            end:
+              line: 4
+              column: 1
+            filename:
+              private_use_as_methods_instead: 0
+          location:
+            start:
+              line: 3
+              column: 2
+            end:
+              line: 3
+              column: 14
+            filename:
+              private_use_as_methods_instead: 0
+          locals:
+            - name: x
+              value:
+                type: Int
+                value: 0
+              moved_paths: []
+            - name: f
+              value:
+                type: Adt
+                value:
+                  name: "main::{closure#0}"
+                  variant: ~
+                  fields:
+                    - - x
+                      - type: Pointer
+                        value:
+                          path:
+                            segment:
+                              type: Stack
+                              value:
+                                frame: 0
+                                local: x
+                            parts: []
+                          range: ~
+                  alloc_kind: ~
+              moved_paths: []
+    heap:
+      locations: []
+  - stack:
+      frames:
+        - name: main
+          body_span:
+            start:
+              line: 0
+              column: 0
+            end:
+              line: 4
+              column: 1
+            filename:
+              private_use_as_methods_instead: 0
+          location:
+            start:
+              line: 3
+              column: 2
+            end:
+              line: 3
+              column: 14
+            filename:
+              private_use_as_methods_instead: 0
+          locals:
+            - name: x
+              value:
+                type: Int
+                value: 0
+              moved_paths: []
+            - name: f
+              value:
+                type: Adt
+                value:
+                  name: "main::{closure#0}"
+                  variant: ~
+                  fields:
+                    - - x
+                      - type: Pointer
+                        value:
+                          path:
+                            segment:
+                              type: Stack
+                              value:
+                                frame: 0
+                                local: x
+                            parts: []
+                          range: ~
+                  alloc_kind: ~
+              moved_paths: []
+        - name: "main::{closure#0}"
+          body_span:
+            start:
+              line: 2
+              column: 10
+            end:
+              line: 2
+              column: 14
+            filename:
+              private_use_as_methods_instead: 0
+          location:
+            start:
+              line: 2
+              column: 10
+            end:
+              line: 2
+              column: 12
+            filename:
+              private_use_as_methods_instead: 0
+          locals: []
+    heap:
+      locations: []
+  - stack:
+      frames:
+        - name: main
+          body_span:
+            start:
+              line: 0
+              column: 0
+            end:
+              line: 4
+              column: 1
+            filename:
+              private_use_as_methods_instead: 0
+          location:
+            start:
+              line: 3
+              column: 2
+            end:
+              line: 3
+              column: 14
+            filename:
+              private_use_as_methods_instead: 0
+          locals:
+            - name: x
+              value:
+                type: Int
+                value: 0
+              moved_paths: []
+            - name: f
+              value:
+                type: Adt
+                value:
+                  name: "main::{closure#0}"
+                  variant: ~
+                  fields:
+                    - - x
+                      - type: Pointer
+                        value:
+                          path:
+                            segment:
+                              type: Stack
+                              value:
+                                frame: 0
+                                local: x
+                            parts: []
+                          range: ~
+                  alloc_kind: ~
+              moved_paths: []
+        - name: "main::{closure#0}"
+          body_span:
+            start:
+              line: 2
+              column: 10
+            end:
+              line: 2
+              column: 14
+            filename:
+              private_use_as_methods_instead: 0
+          location:
+            start:
+              line: 2
+              column: 13
+            end:
+              line: 2
+              column: 14
+            filename:
+              private_use_as_methods_instead: 0
+          locals:
+            - name: (return)
+              value:
+                type: Int
+                value: 0
+              moved_paths: []
+    heap:
+      locations: []
+  - stack:
+      frames:
+        - name: main
+          body_span:
+            start:
+              line: 0
+              column: 0
+            end:
+              line: 4
+              column: 1
+            filename:
+              private_use_as_methods_instead: 0
+          location:
+            start:
+              line: 3
+              column: 2
+            end:
+              line: 3
+              column: 14
+            filename:
+              private_use_as_methods_instead: 0
+          locals:
+            - name: x
+              value:
+                type: Int
+                value: 0
+              moved_paths: []
+            - name: f
+              value:
+                type: Adt
+                value:
+                  name: "main::{closure#0}"
+                  variant: ~
+                  fields:
+                    - - x
+                      - type: Pointer
+                        value:
+                          path:
+                            segment:
+                              type: Stack
+                              value:
+                                frame: 0
+                                local: x
+                            parts: []
+                          range: ~
+                  alloc_kind: ~
+              moved_paths: []
+            - name: y
+              value:
+                type: Int
+                value: 0
+              moved_paths: []
+    heap:
+      locations: []
+  - stack:
+      frames:
+        - name: main
+          body_span:
+            start:
+              line: 0
+              column: 0
+            end:
+              line: 4
+              column: 1
+            filename:
+              private_use_as_methods_instead: 0
+          location:
+            start:
+              line: 4
+              column: 0
+            end:
+              line: 4
+              column: 1
+            filename:
+              private_use_as_methods_instead: 0
+          locals: []
+    heap:
+      locations: []
+result:
+  type: Success

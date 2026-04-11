@@ -1,0 +1,6 @@
+[book]
+authors = ["Prusti Devs <prusti_developers@sympa.ethz.ch>"]
+language = "en"
+multilingual = false
+src = "src"
+title = "Prusti user guide"

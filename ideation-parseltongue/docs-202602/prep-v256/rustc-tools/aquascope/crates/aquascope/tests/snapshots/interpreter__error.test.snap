@@ -1,0 +1,461 @@
+---
+source: crates/aquascope/tests/interpreter.rs
+description: error.test
+---
+steps:
+  - stack:
+      frames:
+        - name: main
+          body_span:
+            start:
+              line: 0
+              column: 0
+            end:
+              line: 5
+              column: 1
+            filename:
+              private_use_as_methods_instead: 0
+          location:
+            start:
+              line: 0
+              column: 0
+            end:
+              line: 0
+              column: 9
+            filename:
+              private_use_as_methods_instead: 0
+          locals: []
+    heap:
+      locations: []
+  - stack:
+      frames:
+        - name: main
+          body_span:
+            start:
+              line: 0
+              column: 0
+            end:
+              line: 5
+              column: 1
+            filename:
+              private_use_as_methods_instead: 0
+          location:
+            start:
+              line: 1
+              column: 2
+            end:
+              line: 1
+              column: 28
+            filename:
+              private_use_as_methods_instead: 0
+          locals:
+            - name: v
+              value:
+                type: Adt
+                value:
+                  name: Vec
+                  variant: ~
+                  fields:
+                    - - buf
+                      - type: Adt
+                        value:
+                          name: RawVec
+                          variant: ~
+                          fields:
+                            - - inner
+                              - type: Adt
+                                value:
+                                  name: RawVecInner
+                                  variant: ~
+                                  fields:
+                                    - - ptr
+                                      - type: Adt
+                                        value:
+                                          name: Unique
+                                          variant: ~
+                                          fields:
+                                            - - pointer
+                                              - type: Adt
+                                                value:
+                                                  name: NonNull
+                                                  variant: ~
+                                                  fields:
+                                                    - - pointer
+                                                      - type: Pointer
+                                                        value:
+                                                          path:
+                                                            segment:
+                                                              type: Heap
+                                                              value:
+                                                                index: 0
+                                                            parts:
+                                                              - type: Index
+                                                                value: 0
+                                                          range: ~
+                                                  alloc_kind: ~
+                                          alloc_kind: ~
+                                    - - cap
+                                      - type: Adt
+                                        value:
+                                          name: Cap
+                                          variant: ~
+                                          fields:
+                                            - - "0"
+                                              - type: Uint
+                                                value: 3
+                                          alloc_kind: ~
+                                  alloc_kind: ~
+                          alloc_kind: ~
+                    - - len
+                      - type: Uint
+                        value: 3
+                  alloc_kind:
+                    type: Vec
+                    value:
+                      len: 3
+              moved_paths: []
+    heap:
+      locations:
+        - type: Array
+          value:
+            type: All
+            value:
+              - type: Int
+                value: 1
+              - type: Int
+                value: 2
+              - type: Int
+                value: 3
+  - stack:
+      frames:
+        - name: main
+          body_span:
+            start:
+              line: 0
+              column: 0
+            end:
+              line: 5
+              column: 1
+            filename:
+              private_use_as_methods_instead: 0
+          location:
+            start:
+              line: 2
+              column: 2
+            end:
+              line: 2
+              column: 16
+            filename:
+              private_use_as_methods_instead: 0
+          locals:
+            - name: v
+              value:
+                type: Adt
+                value:
+                  name: Vec
+                  variant: ~
+                  fields:
+                    - - buf
+                      - type: Adt
+                        value:
+                          name: RawVec
+                          variant: ~
+                          fields:
+                            - - inner
+                              - type: Adt
+                                value:
+                                  name: RawVecInner
+                                  variant: ~
+                                  fields:
+                                    - - ptr
+                                      - type: Adt
+                                        value:
+                                          name: Unique
+                                          variant: ~
+                                          fields:
+                                            - - pointer
+                                              - type: Adt
+                                                value:
+                                                  name: NonNull
+                                                  variant: ~
+                                                  fields:
+                                                    - - pointer
+                                                      - type: Pointer
+                                                        value:
+                                                          path:
+                                                            segment:
+                                                              type: Heap
+                                                              value:
+                                                                index: 0
+                                                            parts:
+                                                              - type: Index
+                                                                value: 0
+                                                          range: ~
+                                                  alloc_kind: ~
+                                          alloc_kind: ~
+                                    - - cap
+                                      - type: Adt
+                                        value:
+                                          name: Cap
+                                          variant: ~
+                                          fields:
+                                            - - "0"
+                                              - type: Uint
+                                                value: 3
+                                          alloc_kind: ~
+                                  alloc_kind: ~
+                          alloc_kind: ~
+                    - - len
+                      - type: Uint
+                        value: 3
+                  alloc_kind:
+                    type: Vec
+                    value:
+                      len: 3
+              moved_paths: []
+            - name: y
+              value:
+                type: Pointer
+                value:
+                  path:
+                    segment:
+                      type: Heap
+                      value:
+                        index: 0
+                    parts:
+                      - type: Index
+                        value: 0
+                  range: ~
+              moved_paths: []
+    heap:
+      locations:
+        - type: Array
+          value:
+            type: All
+            value:
+              - type: Int
+                value: 1
+              - type: Int
+                value: 2
+              - type: Int
+                value: 3
+  - stack:
+      frames:
+        - name: main
+          body_span:
+            start:
+              line: 0
+              column: 0
+            end:
+              line: 5
+              column: 1
+            filename:
+              private_use_as_methods_instead: 0
+          location:
+            start:
+              line: 3
+              column: 2
+            end:
+              line: 3
+              column: 12
+            filename:
+              private_use_as_methods_instead: 0
+          locals:
+            - name: v
+              value:
+                type: Adt
+                value:
+                  name: Vec
+                  variant: ~
+                  fields:
+                    - - buf
+                      - type: Adt
+                        value:
+                          name: RawVec
+                          variant: ~
+                          fields:
+                            - - inner
+                              - type: Adt
+                                value:
+                                  name: RawVecInner
+                                  variant: ~
+                                  fields:
+                                    - - ptr
+                                      - type: Adt
+                                        value:
+                                          name: Unique
+                                          variant: ~
+                                          fields:
+                                            - - pointer
+                                              - type: Adt
+                                                value:
+                                                  name: NonNull
+                                                  variant: ~
+                                                  fields:
+                                                    - - pointer
+                                                      - type: Pointer
+                                                        value:
+                                                          path:
+                                                            segment:
+                                                              type: Heap
+                                                              value:
+                                                                index: 0
+                                                            parts:
+                                                              - type: Index
+                                                                value: 0
+                                                          range: ~
+                                                  alloc_kind: ~
+                                          alloc_kind: ~
+                                    - - cap
+                                      - type: Adt
+                                        value:
+                                          name: Cap
+                                          variant: ~
+                                          fields:
+                                            - - "0"
+                                              - type: Uint
+                                                value: 6
+                                          alloc_kind: ~
+                                  alloc_kind: ~
+                          alloc_kind: ~
+                    - - len
+                      - type: Uint
+                        value: 4
+                  alloc_kind:
+                    type: Vec
+                    value:
+                      len: 4
+              moved_paths: []
+            - name: y
+              value:
+                type: Unallocated
+                value:
+                  alloc_id: 0
+              moved_paths: []
+    heap:
+      locations:
+        - type: Array
+          value:
+            type: All
+            value:
+              - type: Int
+                value: 1
+              - type: Int
+                value: 2
+              - type: Int
+                value: 3
+              - type: Int
+                value: 0
+  - stack:
+      frames:
+        - name: main
+          body_span:
+            start:
+              line: 0
+              column: 0
+            end:
+              line: 5
+              column: 1
+            filename:
+              private_use_as_methods_instead: 0
+          location:
+            start:
+              line: 4
+              column: 2
+            end:
+              line: 4
+              column: 13
+            filename:
+              private_use_as_methods_instead: 0
+          locals:
+            - name: v
+              value:
+                type: Adt
+                value:
+                  name: Vec
+                  variant: ~
+                  fields:
+                    - - buf
+                      - type: Adt
+                        value:
+                          name: RawVec
+                          variant: ~
+                          fields:
+                            - - inner
+                              - type: Adt
+                                value:
+                                  name: RawVecInner
+                                  variant: ~
+                                  fields:
+                                    - - ptr
+                                      - type: Adt
+                                        value:
+                                          name: Unique
+                                          variant: ~
+                                          fields:
+                                            - - pointer
+                                              - type: Adt
+                                                value:
+                                                  name: NonNull
+                                                  variant: ~
+                                                  fields:
+                                                    - - pointer
+                                                      - type: Pointer
+                                                        value:
+                                                          path:
+                                                            segment:
+                                                              type: Heap
+                                                              value:
+                                                                index: 0
+                                                            parts:
+                                                              - type: Index
+                                                                value: 0
+                                                          range: ~
+                                                  alloc_kind: ~
+                                          alloc_kind: ~
+                                    - - cap
+                                      - type: Adt
+                                        value:
+                                          name: Cap
+                                          variant: ~
+                                          fields:
+                                            - - "0"
+                                              - type: Uint
+                                                value: 6
+                                          alloc_kind: ~
+                                  alloc_kind: ~
+                          alloc_kind: ~
+                    - - len
+                      - type: Uint
+                        value: 4
+                  alloc_kind:
+                    type: Vec
+                    value:
+                      len: 4
+              moved_paths: []
+            - name: y
+              value:
+                type: Unallocated
+                value:
+                  alloc_id: 0
+              moved_paths: []
+    heap:
+      locations:
+        - type: Array
+          value:
+            type: All
+            value:
+              - type: Int
+                value: 1
+              - type: Int
+                value: 2
+              - type: Int
+                value: 3
+              - type: Int
+                value: 0
+result:
+  type: Error
+  value:
+    type: PointerUseAfterFree
+    value:
+      alloc_id: 0

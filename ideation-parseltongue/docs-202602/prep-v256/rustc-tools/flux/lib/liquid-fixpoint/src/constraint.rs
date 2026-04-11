@@ -1,0 +1,499 @@
+use std::{
+    collections::{HashMap, HashSet},
+    hash::Hash,
+};
+
+use derive_where::derive_where;
+use indexmap::IndexSet;
+
+use crate::{ThyFunc, Types};
+
+#[derive_where(Hash, Clone, Debug)]
+pub struct Bind<T: Types> {
+    pub name: T::Var,
+    pub sort: Sort<T>,
+    pub pred: Pred<T>,
+}
+
+#[derive_where(Hash, Clone, Debug)]
+pub enum Constraint<T: Types> {
+    Pred(Pred<T>, #[derive_where(skip)] Option<T::Tag>),
+    Conj(Vec<Self>),
+    ForAll(Bind<T>, Box<Self>),
+}
+
+impl<T: Types> Constraint<T> {
+    pub const TRUE: Self = Self::Pred(Pred::TRUE, None);
+
+    pub fn foralls(bindings: Vec<Bind<T>>, c: Self) -> Self {
+        bindings
+            .into_iter()
+            .rev()
+            .fold(c, |c, bind| Constraint::ForAll(bind, Box::new(c)))
+    }
+
+    pub fn conj(mut cstrs: Vec<Self>) -> Self {
+        if cstrs.len() == 1 { cstrs.remove(0) } else { Self::Conj(cstrs) }
+    }
+
+    fn variable_sorts_help(&self, acc: &mut HashMap<T::Var, Sort<T>>) {
+        match self {
+            Constraint::ForAll(bind, inner) => {
+                acc.insert(bind.name.clone(), bind.sort.clone());
+                inner.variable_sorts_help(acc);
+            }
+            Constraint::Conj(cstrs) => {
+                cstrs.iter().for_each(|cstr| cstr.variable_sorts_help(acc));
+            }
+            Constraint::Pred(..) => {}
+        }
+    }
+
+    pub fn variable_sorts(&self) -> HashMap<T::Var, Sort<T>> {
+        let mut res = HashMap::new();
+        self.variable_sorts_help(&mut res);
+        res
+    }
+
+    /// Returns true if the constraint has at least one concrete RHS ("head") predicates.
+    /// If `!c.is_concrete` then `c` is trivially satisfiable and we can avoid calling fixpoint.
+    /// Returns the number of concrete, non-trivial head predicates in the constraint.
+    pub fn concrete_head_count(&self) -> usize {
+        fn go<T: Types>(c: &Constraint<T>, count: &mut usize) {
+            match c {
+                Constraint::Conj(cs) => cs.iter().for_each(|c| go(c, count)),
+                Constraint::ForAll(_, c) => go(c, count),
+                Constraint::Pred(p, _) => {
+                    if p.is_concrete() && !p.is_trivially_true() {
+                        *count += 1;
+                    }
+                }
+            }
+        }
+        let mut count = 0;
+        go(self, &mut count);
+        count
+    }
+}
+
+#[derive_where(Hash, Clone, Debug)]
+pub struct DataDecl<T: Types> {
+    pub name: T::Sort,
+    pub vars: usize,
+    pub ctors: Vec<DataCtor<T>>,
+}
+
+impl<T: Types> DataDecl<T> {
+    pub fn deps(&self, acc: &mut Vec<T::Sort>) {
+        for ctor in &self.ctors {
+            for field in &ctor.fields {
+                field.sort.deps(acc);
+            }
+        }
+    }
+}
+
+#[derive_where(Hash, Clone, Debug)]
+pub struct SortDecl<T: Types> {
+    pub name: T::Sort,
+    pub vars: usize,
+}
+
+#[derive_where(Hash, Clone, Debug)]
+pub struct DataCtor<T: Types> {
+    pub name: T::Var,
+    pub fields: Vec<DataField<T>>,
+}
+
+#[derive_where(Hash, Clone, Debug)]
+pub struct DataField<T: Types> {
+    pub name: T::Var,
+    pub sort: Sort<T>,
+}
+
+#[derive_where(Hash, Clone, Debug)]
+pub enum Sort<T: Types> {
+    Int,
+    Bool,
+    Real,
+    Str,
+    BitVec(Box<Sort<T>>),
+    BvSize(u32),
+    Var(usize),
+    Func(Box<[Self; 2]>),
+    Abs(usize, Box<Self>),
+    App(SortCtor<T>, Vec<Self>),
+}
+
+impl<T: Types> Sort<T> {
+    pub fn deps(&self, acc: &mut Vec<T::Sort>) {
+        match self {
+            Sort::App(SortCtor::Data(dt_name), args) => {
+                acc.push(dt_name.clone());
+                for arg in args {
+                    arg.deps(acc);
+                }
+            }
+            Sort::Func(input_and_output) => {
+                let [input, output] = &**input_and_output;
+                input.deps(acc);
+                output.deps(acc);
+            }
+            Sort::Abs(_, sort) => {
+                sort.deps(acc);
+            }
+            _ => {}
+        }
+    }
+
+    pub fn mk_func<I>(params: usize, inputs: I, output: Sort<T>) -> Sort<T>
+    where
+        I: IntoIterator<Item = Sort<T>>,
+        I::IntoIter: DoubleEndedIterator,
+    {
+        let sort = inputs
+            .into_iter()
+            .rev()
+            .fold(output, |output, input| Sort::Func(Box::new([input, output])));
+
+        (0..params)
+            .rev()
+            .fold(sort, |sort, i| Sort::Abs(i, Box::new(sort)))
+    }
+
+    pub(crate) fn peel_out_abs(&self) -> (usize, &Sort<T>) {
+        let mut n = 0;
+        let mut curr = self;
+        while let Sort::Abs(i, sort) = curr {
+            assert_eq!(*i, n);
+            n += 1;
+            curr = sort;
+        }
+        (n, curr)
+    }
+
+    fn free_var_sorts_to_int_help(&mut self, bound: &mut HashSet<usize>) {
+        match self {
+            Sort::Int
+            | Sort::Real
+            | Sort::Bool
+            | Sort::Str
+            | Sort::BvSize(..)
+            | Sort::BitVec(..) => {}
+            Sort::Abs(var, inner) => {
+                bound.insert(*var);
+                inner.free_var_sorts_to_int_help(bound);
+                bound.remove(var);
+            }
+            Sort::App(_, args) => {
+                for arg in args {
+                    arg.free_var_sorts_to_int_help(bound);
+                }
+            }
+            Sort::Func(inner) => {
+                let [arg, out] = &mut **inner;
+                arg.free_var_sorts_to_int_help(bound);
+                out.free_var_sorts_to_int_help(bound);
+            }
+            Sort::Var(v) => {
+                if !bound.contains(v) {
+                    *self = Sort::Int;
+                }
+            }
+        }
+    }
+
+    pub(crate) fn free_var_sorts_to_int(&mut self) {
+        let mut bound = HashSet::new();
+        self.free_var_sorts_to_int_help(&mut bound);
+    }
+}
+
+#[derive_where(Hash, Debug)]
+pub struct FunSort<T: Types> {
+    pub params: usize,
+    pub inputs: Vec<Sort<T>>,
+    pub output: Sort<T>,
+}
+
+impl<T: Types> FunSort<T> {
+    pub fn deps(&self, acc: &mut Vec<T::Sort>) {
+        for sort in &self.inputs {
+            sort.deps(acc);
+        }
+        self.output.deps(acc);
+    }
+
+    pub fn into_sort(self) -> Sort<T> {
+        Sort::mk_func(self.params, self.inputs, self.output)
+    }
+}
+
+#[derive_where(Hash, Clone, Debug)]
+pub enum SortCtor<T: Types> {
+    Set,
+    Map,
+    Data(T::Sort),
+}
+
+#[derive_where(Hash, Clone, Debug)]
+pub enum Pred<T: Types> {
+    And(Vec<Self>),
+    KVar(T::KVar, Vec<Expr<T>>),
+    Expr(Expr<T>),
+}
+
+impl<T: Types> Pred<T> {
+    pub const TRUE: Self = Pred::Expr(Expr::Constant(Constant::Boolean(true)));
+
+    pub fn and(mut preds: Vec<Self>) -> Self {
+        if preds.is_empty() {
+            Pred::TRUE
+        } else if preds.len() == 1 {
+            preds.remove(0)
+        } else {
+            Self::And(preds)
+        }
+    }
+
+    pub fn is_trivially_true(&self) -> bool {
+        match self {
+            Pred::Expr(Expr::Constant(Constant::Boolean(true))) => true,
+            Pred::And(ps) => ps.is_empty(),
+            _ => false,
+        }
+    }
+
+    pub fn is_concrete(&self) -> bool {
+        match self {
+            Pred::And(ps) => ps.iter().any(Pred::is_concrete),
+            Pred::KVar(_, _) => false,
+            Pred::Expr(_) => true,
+        }
+    }
+
+    #[cfg(feature = "rust-fixpoint")]
+    pub(crate) fn simplify(&mut self) {
+        if let Pred::And(conjuncts) = self {
+            if conjuncts.is_empty() {
+                *self = Pred::TRUE;
+            } else if conjuncts.len() == 1 {
+                *self = conjuncts[0].clone();
+            } else {
+                conjuncts.iter_mut().for_each(|pred| pred.simplify());
+            }
+        }
+    }
+}
+
+#[derive(Hash, Debug, Copy, Clone, PartialEq, Eq)]
+pub enum BinRel {
+    Eq,
+    Ne,
+    Gt,
+    Ge,
+    Lt,
+    Le,
+}
+
+impl BinRel {
+    pub const INEQUALITIES: [BinRel; 4] = [BinRel::Gt, BinRel::Ge, BinRel::Lt, BinRel::Le];
+}
+
+#[derive(Hash, Debug, Copy, Clone, PartialEq, Eq)]
+pub struct BoundVar {
+    pub level: usize,
+    pub idx: usize,
+}
+
+impl BoundVar {
+    pub fn new(level: usize, idx: usize) -> Self {
+        Self { level, idx }
+    }
+}
+
+#[derive_where(Hash, Clone, Debug)]
+pub enum Expr<T: Types> {
+    Constant(Constant<T>),
+    Var(T::Var),
+    App(Box<Self>, Option<Vec<Sort<T>>>, Vec<Self>, Option<Sort<T>>),
+    Neg(Box<Self>),
+    BinaryOp(BinOp, Box<[Self; 2]>),
+    IfThenElse(Box<[Self; 3]>),
+    And(Vec<Self>),
+    Or(Vec<Self>),
+    Not(Box<Self>),
+    Imp(Box<[Self; 2]>),
+    Iff(Box<[Self; 2]>),
+    Atom(BinRel, Box<[Self; 2]>),
+    Let(T::Var, Box<[Self; 2]>),
+    ThyFunc(ThyFunc),
+    IsCtor(T::Var, Box<Self>),
+    Exists(Vec<(T::Var, Sort<T>)>, Box<Self>),
+}
+
+impl<T: Types> From<Constant<T>> for Expr<T> {
+    fn from(v: Constant<T>) -> Self {
+        Self::Constant(v)
+    }
+}
+
+impl<T: Types> Expr<T> {
+    pub const fn int(val: u128) -> Expr<T> {
+        Expr::Constant(Constant::Numeral(val))
+    }
+
+    pub fn eq(self, other: Self) -> Self {
+        Expr::Atom(BinRel::Eq, Box::new([self, other]))
+    }
+
+    pub fn and(mut exprs: Vec<Self>) -> Self {
+        if exprs.len() == 1 { exprs.remove(0) } else { Self::And(exprs) }
+    }
+
+    pub fn var_sorts_to_int(&mut self) {
+        match self {
+            Expr::Constant(_) | Expr::ThyFunc(_) | Expr::Var(_) => {}
+            Expr::App(func, sort_args, args, out_sort) => {
+                func.var_sorts_to_int();
+                for arg in args {
+                    arg.var_sorts_to_int();
+                }
+                if let Some(sort_args) = sort_args {
+                    for sort_arg in sort_args {
+                        sort_arg.free_var_sorts_to_int();
+                    }
+                }
+                if let Some(out_sort) = out_sort {
+                    out_sort.free_var_sorts_to_int();
+                }
+            }
+            Expr::Neg(e) | Expr::Not(e) => {
+                e.var_sorts_to_int();
+            }
+            Expr::BinaryOp(_, exprs)
+            | Expr::Imp(exprs)
+            | Expr::Iff(exprs)
+            | Expr::Atom(_, exprs) => {
+                let [e1, e2] = &mut **exprs;
+                e1.var_sorts_to_int();
+                e2.var_sorts_to_int();
+            }
+            Expr::IfThenElse(exprs) => {
+                let [p, e1, e2] = &mut **exprs;
+                p.var_sorts_to_int();
+                e1.var_sorts_to_int();
+                e2.var_sorts_to_int();
+            }
+            Expr::And(exprs) | Expr::Or(exprs) => {
+                for e in exprs {
+                    e.var_sorts_to_int();
+                }
+            }
+            Expr::Let(_, exprs) => {
+                let [var_e, body_e] = &mut **exprs;
+                var_e.var_sorts_to_int();
+                body_e.var_sorts_to_int();
+            }
+            Expr::IsCtor(_v, expr) => {
+                expr.var_sorts_to_int();
+            }
+            Expr::Exists(binder, expr) => {
+                for (_, sort) in binder {
+                    sort.free_var_sorts_to_int();
+                }
+                expr.var_sorts_to_int();
+            }
+        }
+    }
+
+    pub fn free_vars(&self) -> IndexSet<T::Var> {
+        let mut vars = IndexSet::new();
+        match self {
+            Expr::Constant(_) | Expr::ThyFunc(_) => {}
+            Expr::Var(x) => {
+                vars.insert(x.clone());
+            }
+            Expr::App(func, _sort_args, args, _out_sort) => {
+                vars.extend(func.free_vars());
+                for arg in args {
+                    vars.extend(arg.free_vars());
+                }
+            }
+            Expr::Neg(e) | Expr::Not(e) => {
+                vars = e.free_vars();
+            }
+            Expr::BinaryOp(_, exprs)
+            | Expr::Imp(exprs)
+            | Expr::Iff(exprs)
+            | Expr::Atom(_, exprs) => {
+                let [e1, e2] = &**exprs;
+                vars.extend(e1.free_vars());
+                vars.extend(e2.free_vars());
+            }
+            Expr::IfThenElse(exprs) => {
+                let [p, e1, e2] = &**exprs;
+                vars.extend(p.free_vars());
+                vars.extend(e1.free_vars());
+                vars.extend(e2.free_vars());
+            }
+            Expr::And(exprs) | Expr::Or(exprs) => {
+                for e in exprs {
+                    vars.extend(e.free_vars());
+                }
+            }
+            Expr::Let(name, exprs) => {
+                // Fixpoint only support one binder per let expressions, but it parses a singleton
+                // list of binders to be forward-compatible
+                let [var_e, body_e] = &**exprs;
+                vars.extend(var_e.free_vars());
+                let mut body_vars = body_e.free_vars();
+                body_vars.swap_remove(name);
+                vars.extend(body_vars);
+            }
+            Expr::IsCtor(_v, expr) => {
+                // NOTE: (ck) I'm pretty sure this isn't a binder so I'm not going to
+                // bother with `v`.
+                vars.extend(expr.free_vars());
+            }
+            Expr::Exists(binder, expr) => {
+                let mut inner = expr.free_vars();
+                for (var, _sort) in binder {
+                    inner.swap_remove(var);
+                }
+                vars.extend(inner);
+            }
+        };
+        vars
+    }
+}
+
+#[derive_where(Hash, Clone, Debug)]
+pub enum Constant<T: Types> {
+    Numeral(u128),
+    // Currently we only support parsing integers as decimals. We should extend this to allow
+    // rational numbers as a numer/denom.
+    //
+    // NOTE: If this type is updated, then update parse_expr in the parser
+    // (see the unimplemented!() related to float parsing).
+    Real(u128),
+    Boolean(bool),
+    String(T::String),
+    BitVec(u128, u32),
+}
+
+#[derive_where(Debug, Clone, Hash)]
+pub struct Qualifier<T: Types> {
+    pub name: String,
+    pub args: Vec<(T::Var, Sort<T>)>,
+    pub body: Expr<T>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BinOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+}

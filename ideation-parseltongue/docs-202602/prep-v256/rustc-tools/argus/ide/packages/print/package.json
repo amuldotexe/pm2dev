@@ -1,0 +1,35 @@
+{
+  "name": "@argus/print",
+  "version": "0.1.0",
+  "files": [
+    "dist"
+  ],
+  "main": "dist/lib.js",
+  "exports": {
+    ".": {
+      "default": "./dist/*.js"
+    },
+    "./*": {
+      "default": "./dist/*.js"
+    }
+  },
+  "type": "module",
+  "depot": {
+    "platform": "browser",
+    "target": "lib",
+    "depot-version": "0.3.0"
+  },
+  "devDependencies": {
+    "@argus/common": "workspace:*",
+    "@floating-ui/react": "^0.27.8",
+    "@types/lodash": "^4.17.16",
+    "@types/react": "catalog:",
+    "@vscode/codicons": "^0.0.36",
+    "@vscode/webview-ui-toolkit": "^1.4.0",
+    "classnames": "^2.5.1",
+    "jsdom": "^26.1.0",
+    "lodash": "^4.17.21",
+    "react": "catalog:",
+    "react-error-boundary": "^5.0.0"
+  }
+}

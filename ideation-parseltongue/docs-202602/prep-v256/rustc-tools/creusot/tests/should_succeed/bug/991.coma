@@ -1,0 +1,30 @@
+module M_impl_Formula__love_and_hope (* Formula *)
+  use creusot.prelude.Any
+  use creusot.int.UInt64
+  use seq.Seq
+  use int.Int
+  
+  type t_Vec_usize_Global
+  
+  type t_Formula = { vec: t_Vec_usize_Global; b: bool }
+  
+  type tup2_Seq_usize_bool = { f0: Seq.seq UInt64.t; f1: bool }
+  
+  constant const_MAX: UInt64.t = (18446744073709551615: UInt64.t)
+  
+  function view_Vec_usize_Global (self: t_Vec_usize_Global) : Seq.seq UInt64.t
+  
+  axiom view_Vec_usize_Global_spec: forall self: t_Vec_usize_Global. Seq.length (view_Vec_usize_Global self)
+      <= UInt64.t'int const_MAX
+  
+  function view_Formula (self: t_Formula) : tup2_Seq_usize_bool = { f0 = view_Vec_usize_Global self.vec; f1 = self.b }
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec love_and_hope (self: t_Formula) (return (x: ())) = (! bb0
+    [ bb0 = return {_ret} ] [ & _ret: () = Any.any_l () ])
+    [ return (result: ()) -> {[@stop_split] [@expl:love_and_hope ensures] view_Formula self = view_Formula self}
+      (! return {result}) ]
+end

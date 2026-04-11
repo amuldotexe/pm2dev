@@ -1,0 +1,70 @@
+[package]
+name = "supplementary"
+version = "5.0.0"
+authors = ["Samuel E. Moelius III <sam@moeli.us>"]
+description = "Supplementary lints"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+arg_iter = { path = "arg_iter", features = ["rlib"] }
+commented_out_code = { path = "commented_out_code", features = ["rlib"] }
+dir_entry_path_file_name = { path = "dir_entry_path_file_name", features = [
+    "rlib",
+] }
+escaping_doc_link = { path = "escaping_doc_link", features = ["rlib"] }
+inconsistent_struct_pattern = { path = "inconsistent_struct_pattern", features = [
+    "rlib",
+] }
+local_ref_cell = { path = "local_ref_cell", features = ["rlib"] }
+nonexistent_path_in_comment = { path = "nonexistent_path_in_comment", features = [
+    "rlib",
+] }
+redundant_reference = { path = "redundant_reference", features = ["rlib"] }
+unnamed_constant = { path = "unnamed_constant", features = ["rlib"] }
+unnecessary_borrow_mut = { path = "unnecessary_borrow_mut", features = [
+    "rlib",
+] }
+unnecessary_conversion_for_trait = { path = "unnecessary_conversion_for_trait", features = [
+    "rlib",
+] }
+
+dylint_linting = { path = "../../utils/linting" }
+
+[package.metadata.rust-analyzer]
+rustc_private = true
+
+[workspace]
+members = ["*"]
+exclude = [".cargo", "src"]
+
+[workspace.dependencies]
+cargo-util = "0.2"
+cargo_metadata = "0.23"
+clippy_utils = { git = "https://github.com/rust-lang/rust-clippy", rev = "54482290b5f32e6c6b57cc9e0a17153f432b0036" }
+once_cell = "1.21"
+pulldown-cmark = "0.13"
+regex = "1.12"
+serde = "1.0"
+syn = "2.0"
+tempfile = "3.25"
+
+[workspace.lints.clippy]
+nursery = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+option-if-let-else = "allow"
+
+[workspace.lints.rust.unexpected_cfgs]
+level = "deny"
+check-cfg = ["cfg(dylint_lib, values(any()))"]
+
+[workspace.metadata.dylint]
+libraries = [
+    { path = "../general" },
+    { path = "../supplementary" },
+    { path = "../testing/clippy" },
+    { path = "../restriction/*" },
+]

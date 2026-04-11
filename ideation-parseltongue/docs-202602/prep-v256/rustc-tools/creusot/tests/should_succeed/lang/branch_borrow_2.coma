@@ -1,0 +1,160 @@
+module M_f
+  use creusot.int.Int32
+  use creusot.prelude.MutBorrow
+  use creusot.prelude.Any
+  
+  predicate resolve_refmut_i32 [@inline:trivial] (_1: MutBorrow.t Int32.t) = _1.final = _1.current
+  
+  meta "rewrite_def" predicate resolve_refmut_i32
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec f (return (x: ())) = (! bb0
+    [ bb0 = s0
+      [ s0 = [ &a <- (10: Int32.t) ] s1
+      | s1 = [ &b <- (10: Int32.t) ] s2
+      | s2 = [ &c <- (10: Int32.t) ] s3
+      | s3 = MutBorrow.borrow_mut <Int32.t> {a}
+          (fun (_bor: MutBorrow.t Int32.t) -> [ &x <- _bor ] [ &a <- _bor.final ] s4)
+      | s4 = MutBorrow.borrow_mut <Int32.t> {b}
+          (fun (_bor: MutBorrow.t Int32.t) -> [ &y <- _bor ] [ &b <- _bor.final ] s5)
+      | s5 = MutBorrow.borrow_mut <Int32.t> {c}
+          (fun (_bor: MutBorrow.t Int32.t) -> [ &z <- _bor ] [ &c <- _bor.final ] s6)
+      | s6 = any
+        [ br0 -> {(3: Int32.t) = (1: Int32.t)} (! bb2)
+        | br1 -> {(3: Int32.t) = (2: Int32.t)} (! bb3)
+        | default -> -{(3: Int32.t) <> (1: Int32.t) /\ (3: Int32.t) <> (2: Int32.t)}- (! bb1) ] ]
+    | bb1 = s0
+      [ s0 = -{resolve_refmut_i32 y}- s1
+      | s1 = -{resolve_refmut_i32 x}- s2
+      | s2 = [ &z <- { z with current = (8: Int32.t) } ] s3
+      | s3 = MutBorrow.borrow_final <Int32.t> {z.current} {MutBorrow.get_id z}
+          (fun (_bor: MutBorrow.t Int32.t) -> [ &_12 <- _bor ] [ &z <- { z with current = _bor.final } ] s4)
+      | s4 = [ &w <- _12 ] s5
+      | s5 = bb6 ]
+    | bb3 = s0
+      [ s0 = -{resolve_refmut_i32 z}- s1
+      | s1 = -{resolve_refmut_i32 x}- s2
+      | s2 = [ &y <- { y with current = (7: Int32.t) } ] s3
+      | s3 = MutBorrow.borrow_final <Int32.t> {y.current} {MutBorrow.get_id y}
+          (fun (_bor: MutBorrow.t Int32.t) -> [ &_11 <- _bor ] [ &y <- { y with current = _bor.final } ] s4)
+      | s4 = [ &w <- _11 ] s5
+      | s5 = bb6 ]
+    | bb2 = s0
+      [ s0 = -{resolve_refmut_i32 z}- s1
+      | s1 = -{resolve_refmut_i32 y}- s2
+      | s2 = [ &x <- { x with current = (6: Int32.t) } ] s3
+      | s3 = [ &w <- x ] s4
+      | s4 = bb6 ]
+    | bb6 = s0
+      [ s0 = [ &w <- { w with current = (5: Int32.t) } ] s1
+      | s1 = -{resolve_refmut_i32 w}- s2
+      | s2 = -{resolve_refmut_i32 z}- s3
+      | s3 = -{resolve_refmut_i32 y}- s4
+      | s4 = [ &_14 <- c = (5: Int32.t) ] s5
+      | s5 = any [ br0 -> {_14 = false} (! bb8) | br1 -> {_14} (! bb7) ] ]
+    | bb7 = return {_ret}
+    | bb8 = {false} any ]
+    [ & _ret: () = Any.any_l ()
+    | & a: Int32.t = Any.any_l ()
+    | & b: Int32.t = Any.any_l ()
+    | & c: Int32.t = Any.any_l ()
+    | & x: MutBorrow.t Int32.t = Any.any_l ()
+    | & y: MutBorrow.t Int32.t = Any.any_l ()
+    | & z: MutBorrow.t Int32.t = Any.any_l ()
+    | & w: MutBorrow.t Int32.t = Any.any_l ()
+    | & _11: MutBorrow.t Int32.t = Any.any_l ()
+    | & _12: MutBorrow.t Int32.t = Any.any_l ()
+    | & _14: bool = Any.any_l () ]) [ return (result: ()) -> (! return {result}) ]
+end
+module M_g
+  use creusot.int.UInt64
+  use creusot.prelude.MutBorrow
+  use creusot.prelude.Any
+  
+  type t_MyInt = { f0: UInt64.t }
+  
+  type tup2_MyInt_MyInt = { f0'0: t_MyInt; f1'0: t_MyInt }
+  
+  predicate resolve_refmut_MyInt [@inline:trivial] (_1: MutBorrow.t t_MyInt) = _1.final = _1.current
+  
+  meta "rewrite_def" predicate resolve_refmut_MyInt
+  
+  predicate resolve_refmut_tup2_MyInt_MyInt [@inline:trivial] (_1: MutBorrow.t tup2_MyInt_MyInt) = _1.final = _1.current
+  
+  meta "rewrite_def" predicate resolve_refmut_tup2_MyInt_MyInt
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec g (return (x: ())) = (! bb0
+    [ bb0 = s0
+      [ s0 = [ &_2 <- { f0 = (10: UInt64.t) } ] s1
+      | s1 = [ &_3 <- { f0 = (5: UInt64.t) } ] s2
+      | s2 = [ &a <- { f0'0 = _2; f1'0 = _3 } ] s3
+      | s3 = MutBorrow.borrow_mut <tup2_MyInt_MyInt> {a}
+          (fun (_bor: MutBorrow.t tup2_MyInt_MyInt) -> [ &b <- _bor ] [ &a <- _bor.final ] s4)
+      | s4 = MutBorrow.borrow_final <t_MyInt> {b.current.f1'0} {MutBorrow.inherit_id (MutBorrow.get_id b) 1}
+          (fun (_bor: MutBorrow.t t_MyInt) ->
+            [ &c <- _bor ] [ &b <- { b with current = { b.current with f1'0 = _bor.final } } ] s5)
+      | s5 = MutBorrow.borrow_final <t_MyInt> {b.current.f0'0} {MutBorrow.inherit_id (MutBorrow.get_id b) 0}
+          (fun (_bor: MutBorrow.t t_MyInt) ->
+            [ &d <- _bor ] [ &b <- { b with current = { b.current with f0'0 = _bor.final } } ] s6)
+      | s6 = -{resolve_refmut_MyInt c}- s7
+      | s7 = -{resolve_refmut_MyInt d}- s8
+      | s8 = -{resolve_refmut_tup2_MyInt_MyInt b}- s9
+      | s9 = return {_ret} ] ]
+    [ & _ret: () = Any.any_l ()
+    | & a: tup2_MyInt_MyInt = Any.any_l ()
+    | & _2: t_MyInt = Any.any_l ()
+    | & _3: t_MyInt = Any.any_l ()
+    | & b: MutBorrow.t tup2_MyInt_MyInt = Any.any_l ()
+    | & c: MutBorrow.t t_MyInt = Any.any_l ()
+    | & d: MutBorrow.t t_MyInt = Any.any_l () ]) [ return (result: ()) -> (! return {result}) ]
+end
+module M_h
+  use creusot.int.Int32
+  use creusot.prelude.MutBorrow
+  use creusot.prelude.Any
+  
+  predicate resolve_refmut_i32 [@inline:trivial] (_1: MutBorrow.t Int32.t) = _1.final = _1.current
+  
+  meta "rewrite_def" predicate resolve_refmut_i32
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec h (return (x: ())) = (! bb0
+    [ bb0 = s0
+      [ s0 = [ &a <- (10: Int32.t) ] s1
+      | s1 = [ &b <- (10: Int32.t) ] s2
+      | s2 = MutBorrow.borrow_mut <Int32.t> {a}
+          (fun (_bor: MutBorrow.t Int32.t) -> [ &x <- _bor ] [ &a <- _bor.final ] s3)
+      | s3 = MutBorrow.borrow_mut <Int32.t> {b}
+          (fun (_bor: MutBorrow.t Int32.t) -> [ &y <- _bor ] [ &b <- _bor.final ] s4)
+      | s4 = any [ br0 -> {false} (! bb2) | br1 -> (! bb1) ] ]
+    | bb1 = s0
+      [ s0 = -{resolve_refmut_i32 y}- s1
+      | s1 = [ &x <- { x with current = (5: Int32.t) } ] s2
+      | s2 = [ &w <- x ] s3
+      | s3 = bb3 ]
+    | bb2 = s0
+      [ s0 = -{resolve_refmut_i32 x}- s1
+      | s1 = [ &y <- { y with current = (6: Int32.t) } ] s2
+      | s2 = MutBorrow.borrow_final <Int32.t> {y.current} {MutBorrow.get_id y}
+          (fun (_bor: MutBorrow.t Int32.t) -> [ &_9 <- _bor ] [ &y <- { y with current = _bor.final } ] s3)
+      | s3 = [ &w <- _9 ] s4
+      | s4 = bb3 ]
+    | bb3 = s0 [ s0 = -{resolve_refmut_i32 w}- s1 | s1 = -{resolve_refmut_i32 y}- s2 | s2 = return {_ret} ] ]
+    [ & _ret: () = Any.any_l ()
+    | & a: Int32.t = Any.any_l ()
+    | & b: Int32.t = Any.any_l ()
+    | & x: MutBorrow.t Int32.t = Any.any_l ()
+    | & y: MutBorrow.t Int32.t = Any.any_l ()
+    | & w: MutBorrow.t Int32.t = Any.any_l ()
+    | & _9: MutBorrow.t Int32.t = Any.any_l () ]) [ return (result: ()) -> (! return {result}) ]
+end

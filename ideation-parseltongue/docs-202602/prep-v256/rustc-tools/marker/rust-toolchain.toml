@@ -1,0 +1,14 @@
+[toolchain]
+# region replace rust toolchain dev
+channel = "nightly-2023-12-28"
+# endregion replace rust toolchain dev
+components = [
+  "cargo",
+  "clippy",
+  "llvm-tools",
+  "rust-src",
+  "rust-std",
+  "rustc",
+  "rustc-dev",
+  "rustfmt",
+]

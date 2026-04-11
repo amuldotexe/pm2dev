@@ -1,0 +1,89 @@
+[package]
+name = "dylint"
+version = "5.0.0"
+authors = ["Samuel E. Moelius III <sam@moeli.us>"]
+description = "A tool for running Rust lints from dynamic libraries"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/trailofbits/dylint"
+# This should match `dylint_internal::msrv::MSRV`.
+rust-version = "1.88"
+
+[dependencies]
+anstyle = { workspace = true }
+anyhow = { workspace = true }
+cargo-util = { workspace = true, optional = true }
+cargo-util-schemas = { workspace = true, optional = true }
+cargo_metadata = { workspace = true }
+chrono = { workspace = true, optional = true }
+dunce = { workspace = true, optional = true }
+fs_extra = { workspace = true, optional = true }
+glob = { workspace = true, optional = true }
+heck = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
+log = { workspace = true }
+once_cell = { workspace = true }
+rewriter = { workspace = true, optional = true }
+rustc-stable-hash = { workspace = true, optional = true }
+semver = { workspace = true }
+serde = { workspace = true }
+serde-untagged = { workspace = true, optional = true }
+serde_json = { workspace = true }
+# smoelius: `syntect` can tokenize incomplete Rust fragments, e.g., code with unbalanced delimiters.
+syntect = { workspace = true, features = [
+    "default-syntaxes",
+    "regex-fancy",
+    "parsing",
+], optional = true }
+tempfile = { workspace = true }
+toml = { workspace = true, optional = true }
+url = { workspace = true, optional = true }
+walkdir = { workspace = true, optional = true }
+
+dylint_internal = { version = "=5.0.0", path = "../internal", features = [
+    "config",
+    "git",
+    "packaging",
+    "rustup",
+] }
+
+[build-dependencies]
+dylint_internal = { version = "=5.0.0", path = "../internal", features = [
+    "cargo",
+] }
+
+[dev-dependencies]
+env_logger = { workspace = true }
+
+dylint_internal = { version = "=5.0.0", path = "../internal", features = [
+    "examples",
+] }
+
+[features]
+default = []
+library_packages = ["__cargo_cli"]
+package_options = [
+    "chrono",
+    "dylint_internal/clippy_utils",
+    "dylint_internal/git",
+    "heck",
+    "rewriter",
+    "syntect",
+    "walkdir",
+]
+__cargo_cli = [
+    "cargo-util",
+    "cargo-util-schemas",
+    "dunce",
+    "dylint_internal/home",
+    "fs_extra",
+    "glob",
+    "hex",
+    "rustc-stable-hash",
+    "serde-untagged",
+    "toml",
+    "url",
+]
+
+[lints]
+workspace = true

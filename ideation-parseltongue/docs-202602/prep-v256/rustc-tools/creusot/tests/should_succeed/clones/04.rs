@@ -1,0 +1,21 @@
+extern crate creusot_std;
+
+use creusot_std::prelude::*;
+
+#[logic]
+fn a(x: u32) -> bool {
+    x > 0u32
+}
+
+#[logic]
+fn b(x: u32) -> bool {
+    x > 10u32 && a(x)
+}
+
+#[logic]
+pub fn c(x: u32) -> bool {
+    x < 50u32 && b(x)
+}
+
+#[requires(c(x))]
+pub fn f(x: u32) {}

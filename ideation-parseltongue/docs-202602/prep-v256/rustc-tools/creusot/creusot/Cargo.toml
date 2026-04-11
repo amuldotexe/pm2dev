@@ -1,0 +1,33 @@
+[package]
+name = "creusot"
+version.workspace = true
+authors = ["Xavier Denis <xldenis@gmail.com>"]
+edition = "2024"
+license = "LGPL-2.1-or-later"
+publish = false
+
+[dependencies]
+itertools = "0.14"
+log = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+# Necessary as this introduces a version of `GraphMap` with no `Ord` bound.
+# If https://github.com/petgraph/petgraph/issues/646 is solved, go back to upstream.
+petgraph = { version = "0.6", git = "https://github.com/xldenis/petgraph", rev = "04cecb7" }
+indexmap = { version = "2.7", features = ["serde"] }
+toml = "0.9"
+why3 = { path = "../why3", features = ["serialize"] }
+creusot-metadata = { path = "../creusot-metadata" }
+creusot-args = { path = "../creusot-args" }
+lazy_static = "1.5"
+pathdiff = "0.2"
+once_map = "0.4"
+
+[package.metadata.rust-analyzer]
+rustc_private = true
+
+[package.metadata.release]
+pre-release-replacements = [
+  {file="../CHANGELOG.md", search="Unreleased", replace="{{version}}"},
+  {file="../CHANGELOG.md", search="ReleaseDate", replace="{{date}}"},
+  {file="../CHANGELOG.md", search="<!-- next-header -->", replace="<!-- next-header -->\n\n## [Unreleased] - ReleaseDate", exactly=1},
+]

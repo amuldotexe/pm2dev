@@ -1,0 +1,20 @@
+[workspace]
+members = [
+    "chacha20",
+    "lean_chacha20",
+    "lean_barrett",
+    "lean_adc",
+    "lean_tutorial",
+    "limited-order-book",
+    "sha256",
+    "barrett",
+    "kyber_compress",
+    "proverif-psk",
+    "coq-example",
+    "coverage",
+]
+resolver = "2"
+
+[workspace.dependencies]
+hax-lib = { path = "../hax-lib" }
+hax-bounded-integers = { path = "../hax-bounded-integers" }

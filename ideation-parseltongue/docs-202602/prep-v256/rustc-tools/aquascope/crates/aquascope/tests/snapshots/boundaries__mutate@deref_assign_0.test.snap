@@ -1,0 +1,39 @@
+---
+source: crates/aquascope/tests/boundaries.rs
+description: mutate@deref_assign_0.test
+---
+- location:
+    line: 3
+    column: 4
+  expected:
+    read: true
+    write: true
+    drop: false
+  actual:
+    type_droppable: false
+    type_writeable: true
+    type_copyable: false
+    is_live: true
+    path_uninitialized: false
+    permissions:
+      read: true
+      write: true
+      drop: false
+- location:
+    line: 3
+    column: 12
+  expected:
+    read: true
+    write: false
+    drop: true
+  actual:
+    type_droppable: false
+    type_writeable: true
+    type_copyable: false
+    is_live: true
+    path_uninitialized: false
+    permissions:
+      read: true
+      write: true
+      drop: false
+

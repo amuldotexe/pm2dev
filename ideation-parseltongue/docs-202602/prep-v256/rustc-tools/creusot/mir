@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+
+pushd $(dirname $1) > /dev/null
+INPUTPATH=$(pwd)/$(basename $1)
+popd > /dev/null
+SCRIPTPATH=$(dirname "$BASH_SOURCE")
+pushd $SCRIPTPATH > /dev/null
+eval $(cargo run --bin dev-env)
+cargo run --bin creusot-rustc --  \
+  --edition=2024 \
+  -Zno-codegen \
+  -Zmacro-backtrace \
+  --extern creusot_std=./target/creusot/debug/libcreusot_std.rlib \
+  -Ldependency=./target/creusot/debug/deps/ \
+  --crate-type=lib \
+  -Zunpretty=mir \
+  -Zdump-mir= \
+  "$INPUTPATH" \
+  -- \
+  --output-file /dev/null \
+  --span-mode=absolute \
+  --creusot-extern creusot_std=./target/creusot/debug/libcreusot_std.cmeta
+
+popd > /dev/null

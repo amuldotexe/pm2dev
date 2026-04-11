@@ -1,0 +1,16 @@
+warning: `.bar` is used only to read `.bar.qux`, whose type `bool` implements `Copy`
+  --> $DIR/main.rs:22:9
+   |
+LL |         bar: &'a super::Bar,
+   |         ^^^^^^^^^^^^^^^^^^^
+   |
+note: read here
+  --> $DIR/main.rs:28:17
+   |
+LL |             self.bar.qux
+   |                 ^^^^^^^^
+   = help: consider storing a copy of `.bar.qux` instead
+   = note: `#[warn(redundant_reference)]` on by default
+
+warning: 1 warning emitted
+

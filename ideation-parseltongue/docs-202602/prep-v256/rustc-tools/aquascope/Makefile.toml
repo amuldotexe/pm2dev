@@ -1,0 +1,39 @@
+[config]
+skip_core_tasks = true
+default_to_workspace = false
+
+[tasks.watch-front]
+script = "cargo watch -i frontend -x 'install --path crates/aquascope_front --offline'"
+
+[tasks.watch-front-debug]
+script = "cargo watch -i frontend -x 'install --path crates/aquascope_front --offline --debug'"
+
+[tasks.watch-mdbook]
+script = "cargo watch -w crates/mdbook-aquascope/src -w frontend/packages/aquascope-embed/dist --no-vcs-ignores -x 'install --path crates/mdbook-aquascope --debug --offline'"
+
+[tasks.watch-server]
+script = "cargo run"
+
+[tasks.watch.run_task]
+name = ["watch-front", "watch-server", "watch-mdbook"]
+parallel = true
+
+[tasks.init-bindings]
+script = """
+cargo run --bin export-ts --locked
+cargo test -p aquascope -p mdbook-aquascope --lib export_bindings --locked
+mkdir -p frontend/packages/aquascope-editor/src/bindings
+cp crates/**/bindings/* frontend/packages/aquascope-editor/src/bindings
+"""
+
+[tasks.install-aquascope]
+dependencies = ["init-bindings"]
+script = """
+cd frontend && depot build && cd ..
+cargo miri setup
+cargo install --path crates/aquascope_front --locked
+"""
+
+[tasks.install-mdbook]
+dependencies = ["install-aquascope"]
+script = "cargo install --path crates/mdbook-aquascope --locked"

@@ -1,0 +1,11 @@
+warning: using the `?` operator within an expression
+  --> $DIR/ls.rs:15:34
+   |
+LL |     Ok(std::path::PathBuf::from(&std::env::var("PWD")?))
+   |                                  ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: consider breaking this up into multiple expressions
+   = note: `#[warn(question_mark_in_expression)]` on by default
+
+warning: 1 warning emitted
+

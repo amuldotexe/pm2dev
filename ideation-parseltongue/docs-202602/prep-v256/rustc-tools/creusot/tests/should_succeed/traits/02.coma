@@ -1,0 +1,47 @@
+module M_omg
+  use creusot.prelude.Any
+  
+  type t_T
+  
+  predicate inv_T (_1: t_T)
+  
+  predicate resolve_T (_1: t_T)
+  
+  predicate invariant_ref_T [@inline:trivial] (self: t_T) = inv_T self
+  
+  meta "rewrite_def" predicate invariant_ref_T
+  
+  predicate inv_ref_T [@inline:trivial] (_1: t_T) = invariant_ref_T _1
+  
+  meta "rewrite_def" predicate inv_ref_T
+  
+  predicate precondition_is_true (self: ()) (args: t_T)
+  
+  axiom precondition_fndef: forall args: t_T [precondition_is_true () args]. (let self = args in inv_ref_T self)
+      -> precondition_is_true () args
+  
+  predicate postcondition_once_is_true (self: ()) (args: t_T) (result: bool)
+  
+  axiom postcondition_fndef:
+    forall args: t_T, res: bool [postcondition_once_is_true () args res]. postcondition_once_is_true () args res
+      -> (let self = args in res = true)
+  
+  let rec is_true_T (self: t_T) (return (x: bool)) =
+    {[@stop_split] [@expl:is_true requires] precondition_is_true () self}
+    any
+    [ return (result: bool) -> {[@stop_split] [@expl:is_true ensures] postcondition_once_is_true () self result}
+      (! return {result}) ]
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec omg_T (a: t_T) (return (x: bool)) = {[@stop_split] [@expl:omg 'a' type invariant] inv_T a}
+    (! bb0
+    [ bb0 = s0
+      [ s0 = s1 [ _ck -> (! {[@expl:type invariant] inv_T a} any) ]
+      | s1 = -{resolve_T a}- s2
+      | s2 = is_true_T {a} (fun (_x: bool) -> [ &_ret <- _x ] s3)
+      | s3 = return {_ret} ] ] [ & _ret: bool = Any.any_l () | & a: t_T = a ])
+    [ return (result: bool) -> {[@stop_split] [@expl:omg ensures] result = true} (! return {result}) ]
+end

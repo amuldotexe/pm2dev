@@ -1,0 +1,68 @@
+[workspace]
+members = [
+  "cargo-marker",
+  "marker_adapter",
+  "marker_api",
+  "marker_rustc_driver",
+  "marker_utils",
+  "marker_lints",
+  "marker_uitest",
+  "marker_uilints",
+]
+resolver = "2"
+
+[profile.release]
+codegen-units = 1
+strip         = false
+
+# ⚠️ Turns out there is some bug in LTO on Windows, because it leads to the
+# `marker_rustc_driver` crashing with "exit code: 0xc0000005, STATUS_ACCESS_VIOLATION"
+lto = false
+
+[workspace.package]
+edition    = "2021"
+keywords   = ["marker", "lint"]
+license    = "MIT OR Apache-2.0"
+repository = "https://github.com/rust-marker/marker"
+
+# region replace marker version dev
+version = "0.6.0-dev"
+# endregion replace marker version dev
+
+# The MSRV is applied to the public library crates published to crates.io
+rust-version = "1.70"
+
+[workspace.dependencies]
+# region replace marker version dev
+marker_adapter = { path = "./marker_adapter", version = "0.6.0-dev" }
+marker_api     = { path = "./marker_api", version = "0.6.0-dev" }
+marker_error   = { path = "./marker_error", version = "0.6.0-dev" }
+marker_uitest  = { path = "./marker_uitest", features = ["dev-build"] }
+marker_utils   = { path = "./marker_utils", version = "0.6.0-dev" }
+# endregion replace marker version dev
+
+bumpalo            = "3.14"
+camino             = { version = "1.1", features = ["serde1"] }
+cargo_metadata     = "0.18"
+clap               = { version = "4.4.11", features = ["string", "derive"] }
+expect-test        = "1.4"
+itertools          = "0.12"
+libloading         = "0.8.0"
+miette             = { version = "5.10", features = ["fancy-no-backtrace"] }
+rustc_tools_util   = "0.3"
+semver             = "1.0"
+serde              = { version = "1.0", features = ["derive"] }
+serde_json         = "1.0"
+shlex              = "1.2"
+thiserror          = "1.0"
+toml               = "0.8"
+tracing            = "0.1"
+tracing-error      = "0.2"
+tracing-subscriber = "0.3"
+typed-builder      = "0.18"
+ui_test            = "0.21.2"
+visibility         = "0.1.0"
+yansi              = "1.0.0-rc.1"
+
+[workspace.metadata.marker.lints]
+marker_lints = { path = "./marker_lints" }

@@ -1,0 +1,252 @@
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+name: CI
+
+# Cancel PR actions on new commits
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  test:
+    name: Test
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macOS-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Vulkan SDK
+        uses: jakoch/install-vulkan-sdk-action@v1
+        with:
+          vulkan_version: 1.4.321.0
+          install_runtime: true
+          # cache restore on mac is broken
+          # see https://github.com/jakoch/install-vulkan-sdk-action/issues/558
+          cache: ${{ runner.os != 'macOS' }}
+          stripdown: true
+      - if: ${{ runner.os == 'Linux' }}
+        name: Linux - Install native dependencies
+        run: sudo apt install libwayland-cursor0 libxkbcommon-dev libwayland-dev
+      # just need a random command that forces the installation of rust-toolchain
+      # figure out native target triple while we're at it
+      - name: install rust-toolchain
+        run: echo "TARGET=$(rustc --print host-tuple)" >> "$GITHUB_ENV"
+      # Fetch dependencies in a separate step to clearly show how long each part
+      # of the testing takes
+      - name: cargo fetch --locked
+        run: cargo fetch --locked --target $TARGET
+
+      # Core crates
+      # Compiled in --release because cargo compiletest would otherwise compile in release again.
+      - name: rustc_codegen_spirv build
+        run: cargo test -p rustc_codegen_spirv --release --no-default-features --features "use-installed-tools" --no-run
+
+      - name: rustc_codegen_spirv test
+        run: cargo test -p rustc_codegen_spirv --release --no-default-features --features "use-installed-tools"
+
+      - name: workspace test (excluding examples)
+        run: cargo test --release --workspace --exclude "example-runner-*" --no-default-features --features "use-installed-tools,clap"
+
+      # Examples
+      - name: cargo check examples
+        run: cargo check -p example-runner-ash -p example-runner-wgpu -p example-runner-cpu -p compute-shader -p mouse-shader -p simplest-shader -p sky-shader --no-default-features --features "use-installed-tools"
+
+      - name: build example shaders
+        env:
+          PROFILE: release
+          OUT_DIR: "target/release/ci/out"
+        run: cargo run -p example-runner-wgpu-builder --release --no-default-features --features "use-installed-tools"
+
+      - name: build example shaders (dev aka "debug mode")
+        env:
+          # HACK(eddyb) see `[profile.dev]` in `Cargo.toml` for more on why
+          # `-Zshare-generics=off` is useful (and why it had to be moved here).
+          RUSTFLAGS: -Zshare-generics=off
+          PROFILE: debug
+          OUT_DIR: "target/debug/ci/out"
+        run: cargo run -p example-runner-wgpu-builder --no-default-features --features "use-installed-tools"
+
+  android:
+    name: Android
+    strategy:
+      matrix:
+        os: [ ubuntu-latest ]
+        target: [ aarch64-linux-android ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Vulkan SDK
+        uses: jakoch/install-vulkan-sdk-action@v1
+        with:
+          vulkan_version: 1.4.321.0
+          install_runtime: true
+          cache: true
+          stripdown: true
+      - name: install rust-toolchain
+        run: cargo version
+      - name: cargo fetch --locked
+        run: cargo fetch --locked --target ${{ matrix.target }}
+
+      - name: Build WGPU Example for Android
+        shell: bash
+        run: |
+          echo "::group::Uninstall android-31"
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --uninstall "platforms;android-31"
+          echo "::endgroup::"
+
+          echo "::group::Install android-30"
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-30"
+          echo "::endgroup::"
+
+          echo "::group::Install cargo-apk"
+          cargo +stable install cargo-apk
+          echo "::endgroup::"
+
+          echo "::group::Add aarch64-linux-android target"
+          rustup target add aarch64-linux-android
+          echo "::endgroup::"
+
+          echo "::group::Build WGPU example for Android"
+          cargo apk build -p example-runner-wgpu --lib --features use-installed-tools --no-default-features
+          echo "::endgroup::"
+
+  compiletest:
+    name: Compiletest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macOS-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Vulkan SDK
+        uses: jakoch/install-vulkan-sdk-action@v1
+        with:
+          vulkan_version: 1.4.321.0
+          install_runtime: true
+          cache: true
+          stripdown: true
+      - name: install rust-toolchain
+        run: echo "TARGET=$(rustc --print host-tuple)" >> "$GITHUB_ENV"
+      - name: cargo fetch --locked
+        run: cargo fetch --locked --target $TARGET
+      - name: compiletest
+        run: cargo run -p compiletests --release --no-default-features --features "use-installed-tools" -- --target-env vulkan1.1,vulkan1.2,vulkan1.3,vulkan1.4,spv1.3,spv1.4
+
+  difftest:
+    name: Difftest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macOS-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Vulkan SDK
+        uses: jakoch/install-vulkan-sdk-action@v1
+        with:
+          vulkan_version: 1.4.321.0
+          install_runtime: true
+          cache: true
+          stripdown: true
+          install_lavapipe: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - if: ${{ runner.os == 'Linux' }}
+        name: Linux - Install native dependencies
+        run: sudo apt install libwayland-cursor0 libxkbcommon-dev libwayland-dev
+      - if: ${{ runner.os == 'Linux' }}
+        name: Install xvfb, llvmpipe and lavapipe
+        run: |
+          sudo apt-get update -y -qq
+          sudo add-apt-repository ppa:kisak/turtle -y
+          sudo apt-get update
+          sudo apt install -y xvfb libgl1-mesa-dri libxcb-xfixes0-dev mesa-vulkan-drivers
+      - name: install rust-toolchain
+        run: echo "TARGET=$(rustc --print host-tuple)" >> "$GITHUB_ENV"
+      - name: cargo fetch --locked
+        run: cargo fetch --locked --target $TARGET
+      - name: cargo fetch --locked difftests
+        run: cargo fetch --locked --manifest-path=tests/difftests/tests/Cargo.toml --target $TARGET
+      - name: difftests
+        run: cargo run -p difftests --release --no-default-features --features "use-installed-tools"
+
+  # This allows us to have a single job we can branch protect on, rather than needing
+  # to update the branch protection rules when the test matrix changes
+  test_success:
+    runs-on: ubuntu-latest
+    needs: [test, compiletest, difftest, android, lint, cargo-deny]
+    # Hack for buggy GitHub Actions behavior with skipped checks: https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks#handling-skipped-but-required-checks
+    if: ${{ always() }}
+    steps:
+      # Another hack is to actually check the status of the dependencies or else it'll fall through
+      - run: |
+          echo "Checking statuses..."
+          [[ "${{ needs.test.result }}" == "success" ]] || exit 1
+          [[ "${{ needs.compiletest.result }}" == "success" ]] || exit 1
+          [[ "${{ needs.difftest.result }}" == "success" ]] || exit 1
+          [[ "${{ needs.android.result }}" == "success" ]] || exit 1
+          [[ "${{ needs.lint.result }}" == "success" ]] || exit 1
+          [[ "${{ needs.cargo-deny.result }}" == "success" ]] || exit 1
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      # Note that we are explicitly NOT checking out submodules, to validate
+      # that we haven't accidentally enabled spirv-tools native compilation
+      # and regressed CI times
+      - uses: actions/checkout@v4
+        with:
+          submodules: "false"
+      - name: Install native dependencies
+        run: sudo apt install libwayland-cursor0 libxkbcommon-dev libwayland-dev
+      - name: Install Vulkan SDK
+        uses: jakoch/install-vulkan-sdk-action@v1
+        with:
+          vulkan_version: 1.4.321.0
+          install_runtime: true
+          cache: true
+          stripdown: true
+      # cargo version is a random command that forces the installation of rust-toolchain
+      - name: install rust-toolchain
+        run: cargo version
+      - name: Install rustup components
+        run: rustup component add rustfmt clippy
+      - name: cargo fetch --locked
+        run: cargo fetch --locked
+      - name: Rustfmt
+        run: cargo fmt --all -- --check
+      - name: Rustfmt compiletests
+        run: shopt -s globstar && rustfmt --check tests/compiletests/ui/**/*.rs
+      - name: Rustfmt difftests
+        run: cargo fmt --check --all --manifest-path tests/difftests/tests/Cargo.toml
+      - name: Check docs are valid
+        run: RUSTDOCFLAGS=-Dwarnings cargo doc --no-deps
+      - name: Check docs for `spirv-std` and `spirv-builder` on stable (for docs.rs)
+        run: |
+          RUSTDOCFLAGS=-Dwarnings cargo +stable doc --no-deps -p spirv-std
+          RUSTDOCFLAGS=-Dwarnings cargo +stable doc --no-deps -p spirv-builder --no-default-features
+      - name: cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: custom lints
+        run: .github/workflows/lint.sh
+
+  cargo-deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+
+defaults:
+  run:
+    shell: bash

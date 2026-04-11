@@ -1,0 +1,87 @@
+warning: data structure could derive additional traits
+  --> $DIR/main.rs:16:1
+   |
+LL | struct SimpleStruct {
+   | ^
+   |
+   = note: `#[warn(derive_opportunity)]` on by default
+help: precede with
+   |
+LL + #[derive(Default, serde_derive::Deserialize)]
+LL | struct SimpleStruct {
+   |
+
+warning: data structure could derive additional traits
+  --> $DIR/main.rs:20:1
+   |
+LL | enum SimpleEnum {
+   | ^
+   |
+help: precede with
+   |
+LL + #[derive(serde_derive::Deserialize)]
+LL | enum SimpleEnum {
+   |
+
+warning: data structure could derive additional traits
+  --> $DIR/main.rs:24:1
+   |
+LL | struct StructWithParam<T> {
+   | ^
+   |
+help: precede with
+   |
+LL + #[derive(Default, serde_derive::Deserialize)]
+LL | struct StructWithParam<T> {
+   |
+
+warning: data structure could derive additional traits
+  --> $DIR/main.rs:29:1
+   |
+LL | enum EnumWithParam<T> {
+   | ^
+   |
+help: precede with
+   |
+LL + #[derive(serde_derive::Deserialize)]
+LL | enum EnumWithParam<T> {
+   |
+
+warning: data structure could derive additional traits
+  --> $DIR/main.rs:34:1
+   |
+LL | struct TransitiveStruct {
+   | ^
+   |
+help: precede with
+   |
+LL + #[derive(Default, serde_derive::Deserialize)]
+LL | struct TransitiveStruct {
+   |
+
+warning: data structure could derive additional traits
+  --> $DIR/main.rs:38:1
+   |
+LL | enum TransitiveEnum {
+   | ^
+   |
+help: precede with
+   |
+LL + #[derive(serde_derive::Deserialize)]
+LL | enum TransitiveEnum {
+   |
+
+warning: data structure could derive additional traits
+  --> $DIR/main.rs:43:1
+   |
+LL | struct PartiallyDerivedStruct {
+   | ^
+   |
+help: precede with
+   |
+LL + #[derive(serde_derive::Deserialize)]
+LL | struct PartiallyDerivedStruct {
+   |
+
+warning: 7 warnings emitted
+

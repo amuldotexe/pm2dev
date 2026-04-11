@@ -1,0 +1,16 @@
+warning: borrowed reference is used only immutably
+  --> $DIR/main.rs:9:15
+   |
+LL |     x = *cell.borrow_mut();
+   |               ^^^^^^^^^^^^ help: use: `borrow()`
+   |
+   = note: `#[warn(unnecessary_borrow_mut)]` on by default
+
+warning: borrowed reference is used only immutably
+  --> $DIR/main.rs:11:24
+   |
+LL |     let ref_mut = cell.borrow_mut();
+   |                        ^^^^^^^^^^^^ help: use: `borrow()`
+
+warning: 2 warnings emitted
+

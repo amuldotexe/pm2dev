@@ -1,0 +1,29 @@
+[package]
+name = "example-runner-ash"
+version = "0.0.0"
+publish = false
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# See rustc_codegen_spirv/Cargo.toml for details on these features
+[features]
+default = ["use-compiled-tools"]
+use-installed-tools = ["spirv-builder/use-installed-tools"]
+use-compiled-tools = ["spirv-builder/use-compiled-tools"]
+
+[dependencies]
+ash = "0.38"
+ash-window = "0.13"
+raw-window-handle = "0.6.2"
+winit = "0.30.0"
+clap = { version = "4", features = ["derive"] }
+cfg-if = "1.0.0"
+shared = { path = "../../shaders/shared" }
+spirv-builder = { workspace = true, default-features = false }
+anyhow = "1.0.98"
+bytemuck.workspace = true
+
+[package.metadata.release]
+release = false

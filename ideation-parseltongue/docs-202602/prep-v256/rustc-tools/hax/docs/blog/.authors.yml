@@ -1,0 +1,21 @@
+authors:
+  franziskus:
+    name: Franziskus Kiefer
+    description: Creator
+    avatar: /blog/avatars/franziskus.jpg
+  lucas:
+    name: Lucas Franceschino
+    description: Creator
+    avatar: /blog/avatars/lucas.jpg
+  clement:
+    name: Clement Blaudeau
+    description: Engineer
+    avatar: /blog/avatars/clement.jpg
+  maxime:
+    name: Maxime Buyse
+    description: Engineer
+    avatar: /blog/avatars/maxime.png
+  alex:
+    name: Alexander Bentkamp
+    description: Engineer
+    avatar: /blog/avatars/alex.jpg

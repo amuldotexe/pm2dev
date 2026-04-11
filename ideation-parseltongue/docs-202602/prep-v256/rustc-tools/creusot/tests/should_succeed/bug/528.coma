@@ -1,0 +1,11 @@
+module M_neq
+  use creusot.prelude.Any
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec neq (a: bool) (b: bool) (return (x: bool)) = (! bb0
+    [ bb0 = s0 [ s0 = [ &_ret <- a <> b ] s1 | s1 = return {_ret} ] ]
+    [ & _ret: bool = Any.any_l () | & a: bool = a | & b: bool = b ]) [ return (result: bool) -> (! return {result}) ]
+end

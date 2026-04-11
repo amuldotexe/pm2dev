@@ -1,0 +1,37 @@
+/target
+/verif
+nll-facts/
+mir_dump/
+
+# opam
+_opam
+
+# Creusot local config for development
+/.creusot-config
+INSTALL.opts
+
+# Creusot files
+*.creusot
+*.cmeta
+_creusot_erasure
+
+# Why3 Files
+/*.coma
+*.bak
+*~
+
+# why3find
+META.json
+dune
+dune.why3find
+.why3find
+
+# macOS
+
+.DS_Store
+
+_opam/
+
+# failed tests
+
+why3tests/failed

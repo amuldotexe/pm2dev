@@ -1,0 +1,11 @@
+warning: the inner argument implements the required traits
+  --> $DIR/vec.rs:2:33
+   |
+LL |     let _ = std::fs::write("x", vec![0]);
+   |                                 ^^^^^^^
+   |
+   = help: use the macro arguments directly
+   = note: `#[warn(unnecessary_conversion_for_trait)]` on by default
+
+warning: 1 warning emitted
+

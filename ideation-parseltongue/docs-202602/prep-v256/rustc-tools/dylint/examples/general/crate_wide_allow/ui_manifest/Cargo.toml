@@ -1,0 +1,9 @@
+[package]
+name = "ui_manifest"
+version = "5.0.0"
+edition = "2024"
+
+[lints.clippy]
+assertions_on_constants = "allow"
+
+[workspace]

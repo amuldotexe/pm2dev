@@ -1,0 +1,13 @@
+[book]
+authors = ["Ranjit Jhala"]
+language = "en"
+src = "src"
+title = "The Flux Book"
+
+[output.html.playground]
+editable = true
+line-numbers = false
+
+[output.html]
+theme = "flux_theme"
+additional-css = ["flux_theme/flux.css"]

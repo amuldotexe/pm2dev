@@ -1,0 +1,14 @@
+module M_max_int
+  use creusot.int.UInt64
+  use creusot.prelude.Any
+  
+  constant const_MAX: UInt64.t = (18446744073709551615: UInt64.t)
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec max_int (return (x: UInt64.t)) = (! bb0
+    [ bb0 = s0 [ s0 = [ &_ret <- const_MAX ] s1 | s1 = return {_ret} ] ] [ & _ret: UInt64.t = Any.any_l () ])
+    [ return (result: UInt64.t) -> (! return {result}) ]
+end

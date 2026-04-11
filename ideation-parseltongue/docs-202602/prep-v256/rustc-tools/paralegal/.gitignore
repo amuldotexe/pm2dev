@@ -1,0 +1,26 @@
+target/
+
+
+/rust-dfpp-patch
+flow-graph.json
+*.stat.json
+*.marker_stats.json
+
+# Local cargo configuration
+.cargo/config.toml
+*.eqs
+*.info.json
+
+# Delete this if we want to include a rustfmt configuration
+.rustfmt.toml
+
+/.idea/
+
+.DS_Store
+*.flowistry-pdg.pdf
+
+*.mir
+*.o
+
+call-only-flow.gv
+*.frg

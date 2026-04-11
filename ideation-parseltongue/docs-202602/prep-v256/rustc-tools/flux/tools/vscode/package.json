@@ -1,0 +1,117 @@
+{
+  "name": "flux-checker",
+  "displayName": "Flux Refinement Type Checker",
+  "description": "VSCode Extension for the Flux Refinement Type Checker for Rust",
+  "version": "0.0.8",
+  "publisher": "RanjitJhala",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/flux-rs/flux"
+  },
+  "homepage": "https://github.com/flux-rs/flux",
+  "bugs": "https://github.com/flux-rs/flux/issues",
+  "license": "MIT",
+  "icon": "icon.png",
+  "keywords": [
+    "rust",
+    "refinement types",
+    "verification",
+    "type checker",
+    "flux"
+  ],
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "Flux.toggle",
+        "title": "Toggle Flux View"
+      },
+      {
+        "command": "Flux.showDiagnostic",
+        "title": "Show Full Flux Diagnostic"
+      }
+    ],
+    "activationEvents": [
+      "onCommand:Flux.toggle",
+      "onStartupFinished"
+    ],
+    "languages": [
+      {
+        "id": "fluxc",
+        "aliases": [
+          "Flux Constraint",
+          "fluxc"
+        ],
+        "extensions": [
+          ".fluxc"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "fluxc",
+        "scopeName": "source.fluxc",
+        "path": "./syntaxes/fluxc.tmLanguage.json"
+      },
+      {
+        "injectTo": [
+          "source.rust"
+        ],
+        "scopeName": "flux-keywords.injection",
+        "path": "./syntaxes/flux-keywords.tmLanguage.json"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "fluxView",
+          "name": "Flux Type Checker",
+          "when": "resourceExtname == .rs",
+          "icon": "$(symbol-property)"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Flux",
+      "properties": {
+        "flux.command": {
+          "type": "string",
+          "default": "cargo flux",
+          "description": "The command to run Flux type checker. You can customize this to specify different packages or paths (e.g., 'cargo flux -p kernel').",
+          "scope": "workspace"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.9",
+    "@types/node": "20.x",
+    "@types/vscode": "^1.100.0",
+    "@typescript-eslint/eslint-plugin": "^8.10.0",
+    "@typescript-eslint/parser": "^8.7.0",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1",
+    "eslint": "^9.13.0",
+    "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "anser": "^2.3.2",
+    "prettier": "^3.4.1"
+  }
+}

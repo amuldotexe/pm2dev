@@ -1,0 +1,130 @@
+module M_copy_out_of_ref
+  use creusot.int.UInt32
+  use creusot.prelude.Any
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec copy_out_of_ref (x: UInt32.t) (return (x'0: UInt32.t)) = (! bb0
+    [ bb0 = s0 [ s0 = [ &_ret <- x ] s1 | s1 = return {_ret} ] ]
+    [ & _ret: UInt32.t = Any.any_l () | & x: UInt32.t = x ]) [ return (result: UInt32.t) -> (! return {result}) ]
+end
+module M_copy_out_of_sum
+  use creusot.prelude.MutBorrow
+  use creusot.int.UInt32
+  use creusot.prelude.Any
+  
+  type t_Result_refmut_u32_refmut_u32 = Ok (MutBorrow.t UInt32.t) | Err (MutBorrow.t UInt32.t)
+  
+  let rec elim_Err (_x: t_Result_refmut_u32_refmut_u32) (return (f0: MutBorrow.t UInt32.t)) = any
+    [ _k (f0: MutBorrow.t UInt32.t) -> {Err f0 = _x} (! return {f0})
+    | _chk -> (! {[@expl:elim Err] match _x with
+        | Err _ -> true
+        | _ -> false
+        end}
+      any) ]
+  
+  predicate resolve_refmut_u32 [@inline:trivial] (_1: MutBorrow.t UInt32.t) = _1.final = _1.current
+  
+  meta "rewrite_def" predicate resolve_refmut_u32
+  
+  let rec elim_Ok (_x: t_Result_refmut_u32_refmut_u32) (return (f0: MutBorrow.t UInt32.t)) = any
+    [ _k (f0: MutBorrow.t UInt32.t) -> {Ok f0 = _x} (! return {f0})
+    | _chk -> (! {[@expl:elim Ok] match _x with
+        | Ok _ -> true
+        | _ -> false
+        end}
+      any) ]
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec copy_out_of_sum (x: t_Result_refmut_u32_refmut_u32) (return (x'0: UInt32.t)) = (! bb0
+    [ bb0 = any
+      [ br0 (x0: MutBorrow.t UInt32.t) -> {x = Ok x0} (! bb4) | br1 (x0: MutBorrow.t UInt32.t) -> {x = Err x0} (! bb3) ]
+    | bb3 = s0
+      [ s0 = elim_Err {x} (fun (r0: MutBorrow.t UInt32.t) -> [ &y <- r0 ] s1)
+      | s1 = -{resolve_refmut_u32 y}- s2
+      | s2 = [ &_ret <- y.current ] s3
+      | s3 = return {_ret} ]
+    | bb4 = s0
+      [ s0 = elim_Ok {x} (fun (r0: MutBorrow.t UInt32.t) -> [ &x'0 <- r0 ] s1)
+      | s1 = -{resolve_refmut_u32 x'0}- s2
+      | s2 = [ &_ret <- x'0.current ] s3
+      | s3 = return {_ret} ] ]
+    [ & _ret: UInt32.t = Any.any_l ()
+    | & x: t_Result_refmut_u32_refmut_u32 = x
+    | & x'0: MutBorrow.t UInt32.t = Any.any_l ()
+    | & y: MutBorrow.t UInt32.t = Any.any_l () ]) [ return (result: UInt32.t) -> (! return {result}) ]
+end
+module M_write_into_sum
+  use creusot.int.UInt32
+  use creusot.prelude.MutBorrow
+  use creusot.prelude.Any
+  
+  type t_Option_u32 = None | Some UInt32.t
+  
+  let rec elim_Some (_x: t_Option_u32) (return (f0: UInt32.t)) = any
+    [ _k (f0: UInt32.t) -> {Some f0 = _x} (! return {f0})
+    | _chk -> (! {[@expl:elim Some] match _x with
+        | Some _ -> true
+        | _ -> false
+        end}
+      any) ]
+  
+  predicate resolve_refmut_u32 [@inline:trivial] (_1: MutBorrow.t UInt32.t) = _1.final = _1.current
+  
+  meta "rewrite_def" predicate resolve_refmut_u32
+  
+  predicate resolve_refmut_Option_u32 [@inline:trivial] (_1: MutBorrow.t t_Option_u32) = _1.final = _1.current
+  
+  meta "rewrite_def" predicate resolve_refmut_Option_u32
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec write_into_sum (x: MutBorrow.t t_Option_u32) (return (x'0: ())) = (! bb0
+    [ bb0 = any [ br0 -> {x.current = None} (! bb3) | br1 (x0: UInt32.t) -> {x.current = Some x0} (! bb4) ]
+    | bb4 = s0
+      [ s0 = elim_Some {x.current}
+          (fun (r0: UInt32.t) ->
+            MutBorrow.borrow_final <UInt32.t> {r0} {MutBorrow.inherit_id (MutBorrow.get_id x) 0}
+              (fun (_bor: MutBorrow.t UInt32.t) -> [ &y <- _bor ] [ &x <- { x with current = Some _bor.final } ] s1))
+      | s1 = [ &y <- { y with current = (10: UInt32.t) } ] s2
+      | s2 = -{resolve_refmut_u32 y}- s3
+      | s3 = -{resolve_refmut_Option_u32 x}- s4
+      | s4 = return {_ret} ]
+    | bb3 = s0 [ s0 = -{resolve_refmut_Option_u32 x}- s1 | s1 = return {_ret} ] ]
+    [ & _ret: () = Any.any_l () | & x: MutBorrow.t t_Option_u32 = x | & y: MutBorrow.t UInt32.t = Any.any_l () ])
+    [ return (result: ()) -> (! return {result}) ]
+end
+module M_f
+  use creusot.int.Int32
+  use creusot.prelude.Any
+  
+  type t_Option_i32 = None | Some Int32.t
+  
+  let rec elim_Some (_x: t_Option_i32) (return (f0: Int32.t)) = any
+    [ _k (f0: Int32.t) -> {Some f0 = _x} (! return {f0})
+    | _chk -> (! {[@expl:elim Some] match _x with
+        | Some _ -> true
+        | _ -> false
+        end}
+      any) ]
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec f (return (x: ())) = (! bb0
+    [ bb0 = s0
+      [ s0 = [ &_2 <- Some (10: Int32.t) ] s1
+      | s1 = any [ br0 -> {_2 = None} (! bb5) | br1 (x0: Int32.t) -> {_2 = Some x0} (! bb4) ] ]
+    | bb4 = s0 [ s0 = elim_Some {_2} (fun (r0: Int32.t) -> [ &x <- r0 ] s1) | s1 = return {_ret} ]
+    | bb5 = return {_ret} ]
+    [ & _ret: () = Any.any_l () | & _2: t_Option_i32 = Any.any_l () | & x: Int32.t = Any.any_l () ])
+    [ return (result: ()) -> (! return {result}) ]
+end

@@ -1,0 +1,36 @@
+[workspace]
+resolver = "2"
+members = [
+  "cargo-creusot",
+  "creusot",
+  "creusot-std",
+  "creusot-std-proc",
+  "creusot-dev-config",
+  "creusot-install",
+  "creusot-metadata",
+  "creusot-rustc",
+  "pearlite-syn",
+  "prelude-generator",
+  "tests",
+  "why3",
+  "why3tests",
+]
+
+[workspace.package]
+version = "0.10.0"
+documentation = "https://creusot-rs.github.io/creusot/doc/creusot_std/"
+readme = "README.md"
+keywords = ["verification"]
+repository = "https://github.com/creusot-rs/creusot"
+homepage = "https://github.com/creusot-rs/creusot"
+categories = ["development-tools"]
+
+[profile.dev]
+split-debuginfo = "off"
+
+[workspace.metadata.release]
+shared-version = true
+tag-name = "v{{version}}"
+
+[workspace.metadata.creusot]
+default-members = ["creusot-std"]

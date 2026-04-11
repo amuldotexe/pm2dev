@@ -1,0 +1,11 @@
+module M_impl_Foo_for_unit__g (* <() as Foo> *)
+  constant f_unit: () = ()
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  function g_unit : ()
+  
+  goal vc_g_unit: [@stop_split] [@expl:g ensures] f_unit = ()
+end

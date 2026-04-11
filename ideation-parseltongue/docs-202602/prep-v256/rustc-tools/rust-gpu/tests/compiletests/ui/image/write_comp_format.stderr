@@ -1,0 +1,52 @@
+OpCapability Shader
+OpCapability StorageImageExtendedFormats
+OpMemoryModel Logical Simple
+OpEntryPoint GLCompute %1 "main" %2 %3 %4
+OpExecutionMode %1 LocalSize 8 8 1
+OpName %2 "global_id"
+OpName %3 "fill_color"
+OpName %4 "image"
+OpDecorate %8 Block
+OpMemberDecorate %8 0 Offset 0
+OpDecorate %2 BuiltIn GlobalInvocationId
+OpDecorate %3 NonWritable
+OpDecorate %3 Binding 0
+OpDecorate %3 DescriptorSet 0
+OpDecorate %4 Binding 1
+OpDecorate %4 DescriptorSet 0
+%9 = OpTypeInt 32 0
+%10 = OpTypeVector %9 3
+%11 = OpTypePointer Input %10
+%12 = OpTypeFloat 32
+%13 = OpTypeVector %12 2
+%8 = OpTypeStruct %13
+%14 = OpTypePointer StorageBuffer %8
+%15 = OpTypeImage %12 2D 2 0 0 2 Rg32f
+%16 = OpTypePointer UniformConstant %15
+%17 = OpTypeVoid
+%18 = OpTypeFunction %17
+%2 = OpVariable  %11  Input
+%19 = OpTypePointer StorageBuffer %13
+%3 = OpVariable  %14  StorageBuffer
+%20 = OpConstant  %9  0
+%21 = OpTypePointer StorageBuffer %12
+%22 = OpConstant  %9  1
+%23 = OpTypeVector %9 2
+%4 = OpVariable  %16  UniformConstant
+%1 = OpFunction  %17  None %18
+%24 = OpLabel
+%25 = OpLoad  %10  %2
+%26 = OpInBoundsAccessChain  %19  %3 %20
+%27 = OpCompositeExtract  %9  %25 0
+%28 = OpCompositeExtract  %9  %25 1
+%29 = OpInBoundsAccessChain  %21  %26 %20
+%30 = OpLoad  %12  %29
+%31 = OpInBoundsAccessChain  %21  %26 %22
+%32 = OpLoad  %12  %31
+%33 = OpCompositeConstruct  %23  %27 %28
+%34 = OpCompositeConstruct  %13  %30 %32
+%35 = OpLoad  %15  %4
+OpImageWrite %35 %33 %34
+OpNoLine
+OpReturn
+OpFunctionEnd

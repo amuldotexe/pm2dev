@@ -1,0 +1,253 @@
+name: ci
+
+on:
+  # Makes it possible to trigger via the GitHub UI (Actions tab)
+  workflow_dispatch:
+  merge_group:
+  pull_request:
+  push:
+    branches:
+      - master
+      - hotfix/*
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+  RUSTDOCFLAGS: --deny warnings
+  RUSTFLAGS: --deny warnings
+  # This disables incremental compilation for workspace packages and path deps.
+  # All other dependencies including registry deps will still use the incremental cache.
+  CARGO_INCREMENTAL: 0
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-test:
+    runs-on: ${{ matrix.os }}-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu, windows, macos]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - run: cargo test --locked --all-features --all-targets
+      - run: cargo test --locked --all-features --doc
+
+  rust-lint:
+    runs-on: ${{ matrix.os }}-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu, windows, macos]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - run: cargo clippy --all-features --all-targets --locked
+      - run: cargo doc --no-deps
+
+  rust-formatting:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # rustfmt, might change some formatting between versions. This check should
+      # use the toolchain version from `rust-toolchain.toml` since that is also the
+      # version invoked during normal development in the repo. The formatting
+      # shouldn't matter for consumers of Marker. Therefore it's safe to use the
+      # nightly version of rustfmt
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - run: cargo fmt --check
+
+  # This check is allowed to fail, while Marker is still unstable. It's mostly
+  # a sanity check, to make sure we don't have any unintentional API breakage :)
+  semver-checks:
+    runs-on: ubuntu-latest
+    # This CI check isn't required to pass just yet.
+    # Marker isn't stable so semver breaking changes are allowed.
+    continue-on-error: true
+    if: ${{ github.event.pull_request }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.base_ref }}
+          path: './upstream'
+      - uses: actions/checkout@v4
+        with:
+          path: './downstream'
+      - run: downstream/scripts/download/cargo-semver-checks.sh
+      - run: >-
+          cargo semver-checks
+          --manifest-path './downstream/Cargo.toml'
+          --package marker_api
+          --package marker_utils
+          --package marker_uitest
+          --baseline-root './upstream'
+          --default-features
+          --release-type minor
+
+  # This job ensures required packages can be built with a stable toolchain
+  # except for some special ones that require nightly
+  rust-check-on-stable:
+    runs-on: ${{ matrix.os }}-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu, windows, macos]
+
+    steps:
+      - uses: actions/checkout@v4
+      - run: rm rust-toolchain.toml
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          # We want a wide range of users to be able to build the project
+          # if they stick with an old version in their repository yet.
+          # Therefore we use an older toolchain version here. However,
+          # we may remove this and track the latest stable version once
+          # we ship pre-compiled binaries (#193). This way users wouldn't
+          # need to compile `cargo-marker` from sources and depend on the
+          # toolchain version that they have installed in their environment.
+          toolchain: 1.70.0
+
+      - run: >-
+          cargo check
+          --locked
+          --workspace
+          --exclude marker_rustc_driver
+          --exclude marker_lints
+          --exclude marker_uitest
+
+  # Check for unused dependencies that uses simple regex search,
+  # meaning it's ⚡️ blazingly ⚡️ fast
+  rust-unused-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/download/cargo-machete.sh
+      - run: cargo-machete
+
+  # Check the formatting of TOML files in the repository
+  toml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/download/taplo.sh
+      - run: taplo fmt --check
+
+  # Check for typos in the repository based on a static dictionary
+  typos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/download/typos.sh
+      - run: typos
+
+  # Check that the documentation can be built
+  mdbook:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/download/mdbook.sh
+      - run: mdbook build docs/book
+
+  bash-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Check that the release automation works as expected
+      - run: scripts/release/test.sh
+
+  # This job performs a really simple smoke test that the release build of our binaries
+  # works well. We had to introduce this job after we saw that the release build on windows
+  # couldn't even work without crashing with exit code: 0xc0000005, STATUS_ACCESS_VIOLATION
+  # due to some bug in LTO.
+  release-smoke-test:
+    runs-on: ${{ matrix.os }}-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu, windows, macos]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: MARKER_ALLOW_DRIVER_BUILD=1 cargo build -p cargo_marker -p marker_rustc_driver --release
+      - run: PATH="$PWD/target/release:$PATH" cargo marker
+
+  # Check that the Github Action works
+  github-action-test:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Make sure we cover all operating systems supported by Github Actions
+        os:
+          - windows-2019
+          - windows-2022
+          - ubuntu-20.04
+          - ubuntu-22.04
+          - macos-13
+          - macos-12
+          - macos-11
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # This action downloads the latest released version of `cargo-marker`,
+      # and installs it into `$PATH`.
+      #
+      # Because `marker_lints` in this repo depends on the next dev version of
+      # `marker_api` it won't be compatible with the latest released `marker_api`,
+      # so there is no sense in actually running `cargo marker check` here.
+      # Therefore we set `install-only` to skip running a command.
+      #
+      # At least this checks that our installation script works as expected.
+      - uses: ./
+        env:
+          # Given the default retry sequence of 1, 2, 4, 8, 16, 32, 60, 60, 60, ... 60 (seconds),
+          # this number of retries will give us approximately 30 minutes of total retry time.
+          # This is necessary to make CI wait for the release artifacts to be available on Github
+          # when a new version is released.
+          MARKER_NET_RETRY_COUNT: 35
+        with:
+          install-only: true
+
+      # +stable is to force using the pre-installed `cargo` on the runner instead of
+      # what's specified in `rust-toolchain.toml`
+      - run: cargo +stable marker --version
+
+      # There may be bugs in the release build of our binaries. For example, in the past
+      # we saw that LTO could lead to exit code: 0xc0000005, STATUS_ACCESS_VIOLATION crash
+
+      # FIXME: The stable version of Marker tested by this command might use a different toolchain
+      # version then the one used for the development of rustc driver. Running Marker only loads the
+      # library files for the toolchain it's executed with and "ignores" the toolchain defined in
+      # `rust-toolchain.toml`. Therefore, it's not possible to run the stable version of marker
+      # on `marker_rustc_driver`.
+      # In the future it would be better to run this smoke test on bigger libraries like tokio, serde
+      # bevy etc. For that, it would be good to extract the lintcheck tool from Clippy into a standalone
+      # tool.
+      - run: >-
+          cargo +stable marker
+          -l 'marker_lints="*"'
+          -- 
+          --workspace
+          --exclude marker_rustc_driver
+          --exclude marker_lints
+          --exclude marker_uitest
+

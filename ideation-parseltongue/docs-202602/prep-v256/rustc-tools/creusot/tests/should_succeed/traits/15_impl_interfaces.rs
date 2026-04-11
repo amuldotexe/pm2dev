@@ -1,0 +1,28 @@
+extern crate creusot_std;
+use creusot_std::prelude::*;
+
+// Verifies that instances are properly cloned as interfaces in
+// the interfaces of functions. Also ensures that we don't attempt
+// refine associated types of instances.
+
+pub trait Tr {
+    type A;
+}
+
+impl Tr for () {
+    type A = ();
+}
+
+#[logic(opaque)]
+pub fn x<T: Tr>(_x: T) -> T::A {
+    dead
+}
+
+#[requires(x(a) == ())]
+pub fn calls(a: ()) -> <() as Tr>::A {}
+
+// // This call used to break
+// #[ensures(x(a) == ())]
+// fn breaks(a: ()) {
+//     calls(a)
+// }

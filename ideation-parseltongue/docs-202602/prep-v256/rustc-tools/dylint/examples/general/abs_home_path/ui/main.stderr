@@ -1,0 +1,28 @@
+warning: this path might not exist in production
+  --> $DIR/main.rs:2:13
+   |
+LL |     let _ = env!("CARGO");
+   |             ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(abs_home_path)]` on by default
+
+warning: this path might not exist in production
+  --> $DIR/main.rs:3:13
+   |
+LL |     let _ = env!("CARGO_MANIFEST_DIR");
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: this path might not exist in production
+  --> $DIR/main.rs:4:13
+   |
+LL |     let _ = option_env!("CARGO");
+   |             ^^^^^^^^^^^^^^^^^^^^
+
+warning: this path might not exist in production
+  --> $DIR/main.rs:5:13
+   |
+LL |     let _ = option_env!("CARGO_MANIFEST_DIR");
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: 4 warnings emitted
+

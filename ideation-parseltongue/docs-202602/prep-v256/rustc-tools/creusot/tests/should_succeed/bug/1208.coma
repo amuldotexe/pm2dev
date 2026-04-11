@@ -1,0 +1,25 @@
+module M_impl_Q__mul (* Q *)
+  use int.Int
+  
+  type t_Q = Zero | Frac1 int
+  
+  predicate invariant_Q (self: t_Q) = true
+  
+  type tup2_Q_Q = { f0: t_Q; f1: t_Q }
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  constant self : t_Q
+  
+  constant y : t_Q
+  
+  function mul (self: t_Q) (y: t_Q) : t_Q
+  
+  goal vc_mul: match { f0 = self; f1 = y } with
+      | {f0 = Zero} -> [@stop_split] [@expl:mul ensures] invariant_Q (Zero)
+      | {f1 = Zero} -> [@stop_split] [@expl:mul ensures] invariant_Q (Zero)
+      | {f0 = Frac1 n; f1 = Frac1 m} -> [@stop_split] [@expl:mul ensures] invariant_Q (Frac1 (n + m))
+      end
+end

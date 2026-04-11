@@ -1,0 +1,529 @@
+module M_impl_Clone_for_Expr__clone (* <Expr as std::clone::Clone> *)
+  use creusot.int.UInt64
+  use creusot.prelude.Any
+  
+  type t_Expr = IfThenElse t_Expr t_Expr t_Expr | Var UInt64.t | True' | False'
+  
+  let rec elim_Var (_x: t_Expr) (return (v: UInt64.t)) = any
+    [ _k (v: UInt64.t) -> {Var v = _x} (! return {v})
+    | _chk -> (! {[@expl:elim Var] match _x with
+        | Var _ -> true
+        | _ -> false
+        end}
+      any) ]
+  
+  let rec elim_IfThenElse (_x: t_Expr) (return (c: t_Expr) (t: t_Expr) (e: t_Expr)) = any
+    [ _k (c: t_Expr) (t: t_Expr) (e: t_Expr) -> {IfThenElse c t e = _x} (! return {c} {t} {e})
+    | _chk -> (! {[@expl:elim IfThenElse] match _x with
+        | IfThenElse _ _ _ -> true
+        | _ -> false
+        end}
+      any) ]
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec clone_Expr (self: t_Expr) (return (x: t_Expr)) = (! bb0
+    [ bb0 = any
+      [ br0 (x0: t_Expr) (x1: t_Expr) (x2: t_Expr) -> {self = IfThenElse x0 x1 x2} (! bb8)
+      | br1 (x0: UInt64.t) -> {self = Var x0} (! bb7)
+      | br2 -> {self = True'} (! bb6)
+      | br3 -> {self = False'} (! bb5) ]
+    | bb5 = s0 [ s0 = [ &_ret <- False' ] s1 | s1 = return {_ret} ]
+    | bb6 = s0 [ s0 = [ &_ret <- True' ] s1 | s1 = return {_ret} ]
+    | bb7 = s0
+      [ s0 = elim_Var {self} (fun (rv: UInt64.t) -> [ &v <- rv ] s1) | s1 = [ &_ret <- Var v ] s2 | s2 = return {_ret} ]
+    | bb8 = s0
+      [ s0 = elim_IfThenElse {self} (fun (rc: t_Expr) (rt: t_Expr) (re: t_Expr) -> [ &c <- rc ] s1)
+      | s1 = elim_IfThenElse {self} (fun (rc: t_Expr) (rt: t_Expr) (re: t_Expr) -> [ &t <- rt ] s2)
+      | s2 = elim_IfThenElse {self} (fun (rc: t_Expr) (rt: t_Expr) (re: t_Expr) -> [ &e <- re ] s3)
+      | s3 = [ &_11 <- c ] s4
+      | s4 = clone_Expr {_11} (fun (_x: t_Expr) -> [ &_9 <- _x ] s5)
+      | s5 = [ &_15 <- t ] s6
+      | s6 = clone_Expr {_15} (fun (_x: t_Expr) -> [ &_13 <- _x ] s7)
+      | s7 = [ &_19 <- e ] s8
+      | s8 = clone_Expr {_19} (fun (_x: t_Expr) -> [ &_17 <- _x ] s9)
+      | s9 = [ &_ret <- IfThenElse _9 _13 _17 ] s10
+      | s10 = return {_ret} ] ]
+    [ & _ret: t_Expr = Any.any_l ()
+    | & self: t_Expr = self
+    | & c: t_Expr = Any.any_l ()
+    | & t: t_Expr = Any.any_l ()
+    | & e: t_Expr = Any.any_l ()
+    | & _9: t_Expr = Any.any_l ()
+    | & _11: t_Expr = Any.any_l ()
+    | & _13: t_Expr = Any.any_l ()
+    | & _15: t_Expr = Any.any_l ()
+    | & _17: t_Expr = Any.any_l ()
+    | & _19: t_Expr = Any.any_l ()
+    | & v: UInt64.t = Any.any_l () ])
+    [ return (result: t_Expr) -> {[@stop_split] [@expl:clone ensures] result = self} (! return {result}) ]
+end
+module M_impl_From_for_Expr__from (* <Expr as std::convert::From<usize>> *)
+  use creusot.int.UInt64
+  use creusot.prelude.Any
+  
+  type t_Expr = IfThenElse t_Expr t_Expr t_Expr | Var UInt64.t | True' | False'
+  
+  let rec variable (v: UInt64.t) (return (x: t_Expr)) = any
+    [ return (result: t_Expr) -> {[@stop_split] [@expl:variable ensures] result = Var v} (! return {result}) ]
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec from_Expr (a: UInt64.t) (return (x: t_Expr)) = (! bb0
+    [ bb0 = s0 [ s0 = variable {a} (fun (_x: t_Expr) -> [ &_ret <- _x ] s1) | s1 = return {_ret} ] ]
+    [ & _ret: t_Expr = Any.any_l () | & a: UInt64.t = a ]) [ return (result: t_Expr) -> (! return {result}) ]
+end
+module M_impl_From_for_Expr_0__from (* <Expr as std::convert::From<bool>> *)
+  use creusot.int.UInt64
+  use creusot.prelude.Any
+  
+  type t_Expr = IfThenElse t_Expr t_Expr t_Expr | Var UInt64.t | True' | False'
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec from_Expr (b: bool) (return (x: t_Expr)) = (! bb0
+    [ bb0 = any [ br0 -> {b = false} (! bb2) | br1 -> {b} (! bb1) ]
+    | bb1 = s0 [ s0 = [ &_ret <- True' ] s1 | s1 = return {_ret} ]
+    | bb2 = s0 [ s0 = [ &_ret <- False' ] s1 | s1 = return {_ret} ] ] [ & _ret: t_Expr = Any.any_l () | & b: bool = b ])
+    [ return (result: t_Expr) -> (! return {result}) ]
+end
+module M_impl_Expr__ite (* Expr *)
+  use creusot.int.UInt64
+  use creusot.prelude.Any
+  
+  type t_Expr = IfThenElse t_Expr t_Expr t_Expr | Var UInt64.t | True' | False'
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec ite (c: t_Expr) (t: t_Expr) (e: t_Expr) (return (x: t_Expr)) = (! bb0
+    [ bb0 = s0 [ s0 = [ &_ret <- IfThenElse c t e ] s1 | s1 = return {_ret} ] ]
+    [ & _ret: t_Expr = Any.any_l () | & c: t_Expr = c | & t: t_Expr = t | & e: t_Expr = e ])
+    [ return (result: t_Expr) -> {[@stop_split] [@expl:ite ensures] result = IfThenElse c t e} (! return {result}) ]
+end
+module M_impl_Expr__variable (* Expr *)
+  use creusot.int.UInt64
+  use creusot.prelude.Any
+  
+  type t_Expr = IfThenElse t_Expr t_Expr t_Expr | Var UInt64.t | True' | False'
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec variable (v: UInt64.t) (return (x: t_Expr)) = (! bb0
+    [ bb0 = s0 [ s0 = [ &_ret <- Var v ] s1 | s1 = return {_ret} ] ]
+    [ & _ret: t_Expr = Any.any_l () | & v: UInt64.t = v ])
+    [ return (result: t_Expr) -> {[@stop_split] [@expl:variable ensures] result = Var v} (! return {result}) ]
+end
+module M_impl_Expr__transpose (* Expr *)
+  use creusot.int.UInt64
+  use creusot.prelude.Any
+  
+  type t_Expr = IfThenElse t_Expr t_Expr t_Expr | Var UInt64.t | True' | False'
+  
+  let rec elim_IfThenElse (_x: t_Expr) (return (c: t_Expr) (t: t_Expr) (e: t_Expr)) = any
+    [ _k (c: t_Expr) (t: t_Expr) (e: t_Expr) -> {IfThenElse c t e = _x} (! return {c} {t} {e})
+    | _chk -> (! {[@expl:elim IfThenElse] match _x with
+        | IfThenElse _ _ _ -> true
+        | _ -> false
+        end}
+      any) ]
+  
+  let rec clone_Expr (self: t_Expr) (return (x: t_Expr)) = any
+    [ return (result: t_Expr) -> {[@stop_split] [@expl:clone ensures] result = self} (! return {result}) ]
+  
+  predicate is_normalized (self: t_Expr) =
+    match self with
+      | IfThenElse c t e -> is_normalized c
+      /\ is_normalized t
+      /\ is_normalized e
+      /\ match c with
+        | IfThenElse _ _ _ -> false
+        | _ -> true
+        end
+      | Var _ -> true
+      | True' -> true
+      | False' -> true
+      end
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec transpose (self: t_Expr) (a: t_Expr) (b: t_Expr) (return (x: t_Expr)) =
+    {[@stop_split] [@expl:transpose requires] ([@stop_split] [@expl:transpose requires #0] is_normalized self)
+    /\ ([@stop_split] [@expl:transpose requires #1] is_normalized a)
+    /\ ([@stop_split] [@expl:transpose requires #2] is_normalized b)}
+    (! bb0
+    [ bb0 = any
+      [ br0 (x0: t_Expr) (x1: t_Expr) (x2: t_Expr) -> {self = IfThenElse x0 x1 x2} (! bb8)
+      | br1 (x0: UInt64.t) -> {self = Var x0} (! bb23)
+      | br2 -> {self = True'} (! bb6)
+      | br3 -> {self = False'} (! bb5) ]
+    | bb5 = s0 [ s0 = [ &_ret <- b ] s1 | s1 = return {_ret} ]
+    | bb6 = s0 [ s0 = [ &_ret <- a ] s1 | s1 = return {_ret} ]
+    | bb23 = s0 [ s0 = [ &_ret <- IfThenElse self a b ] s1 | s1 = return {_ret} ]
+    | bb8 = s0
+      [ s0 = elim_IfThenElse {self} (fun (rc: t_Expr) (rt: t_Expr) (re: t_Expr) -> [ &c <- rc ] s1)
+      | s1 = elim_IfThenElse {self} (fun (rc: t_Expr) (rt: t_Expr) (re: t_Expr) -> [ &t <- rt ] s2)
+      | s2 = elim_IfThenElse {self} (fun (rc: t_Expr) (rt: t_Expr) (re: t_Expr) -> [ &e <- re ] s3)
+      | s3 = clone_Expr {a} (fun (_x: t_Expr) -> [ &_19 <- _x ] s4)
+      | s4 = clone_Expr {b} (fun (_x: t_Expr) -> [ &_21 <- _x ] s5)
+      | s5 = transpose {t} {_19} {_21} (fun (_x: t_Expr) -> [ &_17 <- _x ] s6)
+      | s6 = transpose {e} {a} {b} (fun (_x: t_Expr) -> [ &_24 <- _x ] s7)
+      | s7 = [ &_ret <- IfThenElse c _17 _24 ] s8
+      | s8 = return {_ret} ] ]
+    [ & _ret: t_Expr = Any.any_l ()
+    | & self: t_Expr = self
+    | & a: t_Expr = a
+    | & b: t_Expr = b
+    | & c: t_Expr = Any.any_l ()
+    | & t: t_Expr = Any.any_l ()
+    | & e: t_Expr = Any.any_l ()
+    | & _17: t_Expr = Any.any_l ()
+    | & _19: t_Expr = Any.any_l ()
+    | & _21: t_Expr = Any.any_l ()
+    | & _24: t_Expr = Any.any_l () ])
+    [ return (result: t_Expr) -> {[@stop_split] [@expl:transpose ensures] is_normalized result} (! return {result}) ]
+end
+module M_impl_Expr__normalize (* Expr *)
+  use creusot.int.UInt64
+  use creusot.prelude.Any
+  
+  type t_Expr = IfThenElse t_Expr t_Expr t_Expr | Var UInt64.t | True' | False'
+  
+  let rec clone_Expr (self: t_Expr) (return (x: t_Expr)) = any
+    [ return (result: t_Expr) -> {[@stop_split] [@expl:clone ensures] result = self} (! return {result}) ]
+  
+  let rec elim_IfThenElse (_x: t_Expr) (return (c: t_Expr) (t: t_Expr) (e: t_Expr)) = any
+    [ _k (c: t_Expr) (t: t_Expr) (e: t_Expr) -> {IfThenElse c t e = _x} (! return {c} {t} {e})
+    | _chk -> (! {[@expl:elim IfThenElse] match _x with
+        | IfThenElse _ _ _ -> true
+        | _ -> false
+        end}
+      any) ]
+  
+  predicate is_normalized (self: t_Expr) =
+    match self with
+      | IfThenElse c t e -> is_normalized c
+      /\ is_normalized t
+      /\ is_normalized e
+      /\ match c with
+        | IfThenElse _ _ _ -> false
+        | _ -> true
+        end
+      | Var _ -> true
+      | True' -> true
+      | False' -> true
+      end
+  
+  let rec transpose (self: t_Expr) (a: t_Expr) (b: t_Expr) (return (x: t_Expr)) =
+    {[@stop_split] [@expl:transpose requires] ([@stop_split] [@expl:transpose requires #0] is_normalized self)
+    /\ ([@stop_split] [@expl:transpose requires #1] is_normalized a)
+    /\ ([@stop_split] [@expl:transpose requires #2] is_normalized b)}
+    any
+    [ return (result: t_Expr) -> {[@stop_split] [@expl:transpose ensures] is_normalized result} (! return {result}) ]
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec normalize (self: t_Expr) (return (x: t_Expr)) = (! bb0
+    [ bb0 = any
+      [ br0 (x0: t_Expr) (x1: t_Expr) (x2: t_Expr) -> {self = IfThenElse x0 x1 x2} (! bb3)
+      | br1 (x0: UInt64.t) -> {self = Var x0} (! bb1)
+      | br2 -> {self = True'} (! bb1)
+      | br3 -> {self = False'} (! bb1) ]
+    | bb1 = s0
+      [ s0 = [ &e'0 <- self ] s1 | s1 = clone_Expr {e'0} (fun (_x: t_Expr) -> [ &_ret <- _x ] s2) | s2 = return {_ret} ]
+    | bb3 = s0
+      [ s0 = elim_IfThenElse {self} (fun (rc: t_Expr) (rt: t_Expr) (re: t_Expr) -> [ &c <- rc ] s1)
+      | s1 = elim_IfThenElse {self} (fun (rc: t_Expr) (rt: t_Expr) (re: t_Expr) -> [ &t <- rt ] s2)
+      | s2 = elim_IfThenElse {self} (fun (rc: t_Expr) (rt: t_Expr) (re: t_Expr) -> [ &e <- re ] s3)
+      | s3 = normalize {c} (fun (_x: t_Expr) -> [ &cp <- _x ] s4)
+      | s4 = normalize {t} (fun (_x: t_Expr) -> [ &tp <- _x ] s5)
+      | s5 = normalize {e} (fun (_x: t_Expr) -> [ &ep <- _x ] s6)
+      | s6 = transpose {cp} {tp} {ep} (fun (_x: t_Expr) -> [ &_ret <- _x ] s7)
+      | s7 = return {_ret} ] ]
+    [ & _ret: t_Expr = Any.any_l ()
+    | & self: t_Expr = self
+    | & c: t_Expr = Any.any_l ()
+    | & t: t_Expr = Any.any_l ()
+    | & e: t_Expr = Any.any_l ()
+    | & cp: t_Expr = Any.any_l ()
+    | & tp: t_Expr = Any.any_l ()
+    | & ep: t_Expr = Any.any_l ()
+    | & e'0: t_Expr = Any.any_l () ])
+    [ return (result: t_Expr) -> {[@stop_split] [@expl:normalize ensures] is_normalized result} (! return {result}) ]
+end
+module M_impl_Expr__simplify (* Expr *)
+  use creusot.int.UInt64
+  use map.Map
+  use creusot.prelude.Any
+  
+  type t_BTreeMap_usize_bool
+  
+  let rec new_usize (return (x: t_BTreeMap_usize_bool)) = any
+    [ return (result: t_BTreeMap_usize_bool) -> (! return {result}) ]
+  
+  type t_Expr = IfThenElse t_Expr t_Expr t_Expr | Var UInt64.t | True' | False'
+  
+  predicate is_normalized (self: t_Expr) =
+    match self with
+      | IfThenElse c t e -> is_normalized c
+      /\ is_normalized t
+      /\ is_normalized e
+      /\ match c with
+        | IfThenElse _ _ _ -> false
+        | _ -> true
+        end
+      | Var _ -> true
+      | True' -> true
+      | False' -> true
+      end
+  
+  type t_Option_bool = None | Some bool
+  
+  function view_BTreeMap_usize_bool (self: t_BTreeMap_usize_bool) : Map.map int t_Option_bool
+  
+  predicate does_not_contain (self: t_Expr) (vp: UInt64.t) =
+    match self with
+      | IfThenElse c t e -> does_not_contain c vp /\ does_not_contain t vp /\ does_not_contain e vp
+      | Var v -> v <> vp
+      | _ -> true
+      end
+  
+  predicate is_simplified (self: t_Expr) =
+    match self with
+      | IfThenElse c t e -> match c with
+        | Var v -> does_not_contain t v /\ does_not_contain e v
+        | c'0 -> is_simplified c'0 /\ is_simplified t /\ is_simplified e
+        end
+      | _ -> true
+      end
+  
+  let rec simplify_helper (self: t_Expr) (state: t_BTreeMap_usize_bool) (return (x: t_Expr)) =
+    {[@stop_split] [@expl:simplify_helper requires] is_normalized self}
+    any
+    [ return (result: t_Expr) ->
+    {[@stop_split] [@expl:simplify_helper ensures] ([@stop_split] [@expl:simplify_helper ensures #0] forall i: UInt64.t. (exists v: bool. Map.get (view_BTreeMap_usize_bool state) (UInt64.t'int i)
+              = Some v) -> does_not_contain result i)
+      /\ ([@stop_split] [@expl:simplify_helper ensures #1] is_simplified result)}
+      (! return {result}) ]
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec simplify (self: t_Expr) (return (x: t_Expr)) = {[@stop_split] [@expl:simplify requires] is_normalized self}
+    (! bb0
+    [ bb0 = s0
+      [ s0 = new_usize (fun (_x: t_BTreeMap_usize_bool) -> [ &_6 <- _x ] s1)
+      | s1 = simplify_helper {self} {_6} (fun (_x: t_Expr) -> [ &_ret <- _x ] s2)
+      | s2 = return {_ret} ] ]
+    [ & _ret: t_Expr = Any.any_l () | & self: t_Expr = self | & _6: t_BTreeMap_usize_bool = Any.any_l () ])
+    [ return (result: t_Expr) -> {[@stop_split] [@expl:simplify ensures] is_simplified result} (! return {result}) ]
+end
+module M_impl_Expr__simplify_helper (* Expr *)
+  use creusot.int.UInt64
+  use map.Map
+  use creusot.prelude.MutBorrow
+  use creusot.prelude.Any
+  
+  type t_Expr = IfThenElse t_Expr t_Expr t_Expr | Var UInt64.t | True' | False'
+  
+  type t_BTreeMap_usize_bool
+  
+  predicate resolve_BTreeMap_usize_bool (_1: t_BTreeMap_usize_bool)
+  
+  let rec elim_Var (_x: t_Expr) (return (v: UInt64.t)) = any
+    [ _k (v: UInt64.t) -> {Var v = _x} (! return {v})
+    | _chk -> (! {[@expl:elim Var] match _x with
+        | Var _ -> true
+        | _ -> false
+        end}
+      any) ]
+  
+  type t_Option_ref_bool = None | Some bool
+  
+  type t_Option_bool = None'0 | Some'0 bool
+  
+  function view_BTreeMap_usize_bool (self: t_BTreeMap_usize_bool) : Map.map int t_Option_bool
+  
+  function deep_model_usize [@inline:trivial] (self: UInt64.t) : int = UInt64.t'int self
+  
+  meta "rewrite_def" function deep_model_usize
+  
+  function deep_model_ref_usize [@inline:trivial] (self: UInt64.t) : int = deep_model_usize self
+  
+  meta "rewrite_def" function deep_model_ref_usize
+  
+  let rec get_usize (self: t_BTreeMap_usize_bool) (key: UInt64.t) (return (x: t_Option_ref_bool)) = any
+    [ return (result: t_Option_ref_bool) ->
+    {[@stop_split] [@expl:get_usize ensures] ([@stop_split] [@expl:get ensures #0] result = None
+        -> Map.get (view_BTreeMap_usize_bool self) (deep_model_ref_usize key) = None'0)
+      /\ ([@stop_split] [@expl:get ensures #1] forall v: bool. result = Some v
+        -> Map.get (view_BTreeMap_usize_bool self) (deep_model_ref_usize key) = Some'0 v)}
+      (! return {result}) ]
+  
+  let rec elim_Some (_x: t_Option_ref_bool) (return (f0: bool)) = any
+    [ _k (f0: bool) -> {Some f0 = _x} (! return {f0})
+    | _chk -> (! {[@expl:elim Some] match _x with
+        | Some _ -> true
+        | _ -> false
+        end}
+      any) ]
+  
+  let rec elim_IfThenElse (_x: t_Expr) (return (c: t_Expr) (t: t_Expr) (e: t_Expr)) = any
+    [ _k (c: t_Expr) (t: t_Expr) (e: t_Expr) -> {IfThenElse c t e = _x} (! return {c} {t} {e})
+    | _chk -> (! {[@expl:elim IfThenElse] match _x with
+        | IfThenElse _ _ _ -> true
+        | _ -> false
+        end}
+      any) ]
+  
+  let rec clone_BTreeMap_usize_bool (self: t_BTreeMap_usize_bool) (return (x: t_BTreeMap_usize_bool)) = any
+    [ return (result: t_BTreeMap_usize_bool) -> {[@stop_split] [@expl:clone ensures] self = result}
+      (! return {result}) ]
+  
+  let rec insert_usize (self: MutBorrow.t t_BTreeMap_usize_bool) (key: UInt64.t) (value: bool)
+    (return (x: t_Option_bool)) = any
+    [ return (result: t_Option_bool) ->
+    {[@stop_split] [@expl:insert ensures] forall i: int. Map.get (view_BTreeMap_usize_bool self.final) i
+        = (if i = deep_model_usize key then Some'0 value else Map.get (view_BTreeMap_usize_bool self.current) i)}
+      (! return {result}) ]
+  
+  predicate is_normalized (self: t_Expr) =
+    match self with
+      | IfThenElse c t e -> is_normalized c
+      /\ is_normalized t
+      /\ is_normalized e
+      /\ match c with
+        | IfThenElse _ _ _ -> false
+        | _ -> true
+        end
+      | Var _ -> true
+      | True' -> true
+      | False' -> true
+      end
+  
+  predicate does_not_contain (self: t_Expr) (vp: UInt64.t) =
+    match self with
+      | IfThenElse c t e -> does_not_contain c vp /\ does_not_contain t vp /\ does_not_contain e vp
+      | Var v -> v <> vp
+      | _ -> true
+      end
+  
+  predicate is_simplified (self: t_Expr) =
+    match self with
+      | IfThenElse c t e -> match c with
+        | Var v -> does_not_contain t v /\ does_not_contain e v
+        | c'0 -> is_simplified c'0 /\ is_simplified t /\ is_simplified e
+        end
+      | _ -> true
+      end
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec simplify_helper (self: t_Expr) (state: t_BTreeMap_usize_bool) (return (x: t_Expr)) =
+    {[@stop_split] [@expl:simplify_helper requires] is_normalized self}
+    (! bb0
+    [ bb0 = any
+      [ br0 (x0: t_Expr) (x1: t_Expr) (x2: t_Expr) -> {self = IfThenElse x0 x1 x2} (! bb5)
+      | br1 (x0: UInt64.t) -> {self = Var x0} (! bb4)
+      | br2 -> {self = True'} (! bb1)
+      | br3 -> {self = False'} (! bb1) ]
+    | bb1 = s0
+      [ s0 = -{resolve_BTreeMap_usize_bool state}- s1
+      | s1 = [ &c'1 <- self ] s2
+      | s2 = [ &_ret <- c'1 ] s3
+      | s3 = return {_ret} ]
+    | bb4 = s0
+      [ s0 = elim_Var {self} (fun (rv: UInt64.t) -> [ &v'0 <- rv ] s1)
+      | s1 = -{resolve_BTreeMap_usize_bool state}- s2
+      | s2 = [ &_53 <- v'0 ] s3
+      | s3 = get_usize {state} {_53} (fun (_x: t_Option_ref_bool) -> [ &_50 <- _x ] s4)
+      | s4 = any [ br0 -> {_50 = None} (! bb46) | br1 (x0: bool) -> {_50 = Some x0} (! bb42) ] ]
+    | bb46 = s0 [ s0 = [ &_ret <- Var v'0 ] s1 | s1 = return {_ret} ]
+    | bb42 = s0
+      [ s0 = elim_Some {_50} (fun (r0: bool) -> [ &b'0 <- r0 ] s1)
+      | s1 = any [ br0 -> {b'0 = false} (! bb44) | br1 -> {b'0} (! bb43) ] ]
+    | bb43 = s0 [ s0 = [ &_ret <- True' ] s1 | s1 = return {_ret} ]
+    | bb44 = s0 [ s0 = [ &_ret <- False' ] s1 | s1 = return {_ret} ]
+    | bb5 = s0
+      [ s0 = elim_IfThenElse {self} (fun (rc: t_Expr) (rt: t_Expr) (re: t_Expr) -> [ &c <- rc ] s1)
+      | s1 = elim_IfThenElse {self} (fun (rc: t_Expr) (rt: t_Expr) (re: t_Expr) -> [ &t <- rt ] s2)
+      | s2 = elim_IfThenElse {self} (fun (rc: t_Expr) (rt: t_Expr) (re: t_Expr) -> [ &e <- re ] s3)
+      | s3 = any
+        [ br0 (x0: t_Expr) (x1: t_Expr) (x2: t_Expr) -> {c = IfThenElse x0 x1 x2} (! bb6)
+        | br1 (x0: UInt64.t) -> {c = Var x0} (! bb8)
+        | br2 -> {c = True'} (! bb6)
+        | br3 -> {c = False'} (! bb6) ] ]
+    | bb6 = s0
+      [ s0 = [ &c'0 <- c ] s1
+      | s1 = simplify_helper {c'0} {state} (fun (_x: t_Expr) -> [ &_ret <- _x ] s2)
+      | s2 = return {_ret} ]
+    | bb8 = s0
+      [ s0 = elim_Var {c} (fun (rv: UInt64.t) -> [ &v <- rv ] s1)
+      | s1 = [ &_17 <- v ] s2
+      | s2 = get_usize {state} {_17} (fun (_x: t_Option_ref_bool) -> [ &_14 <- _x ] s3)
+      | s3 = any [ br0 -> {_14 = None} (! bb17) | br1 (x0: bool) -> {_14 = Some x0} (! bb11) ] ]
+    | bb17 = s0
+      [ s0 = clone_BTreeMap_usize_bool {state} (fun (_x: t_BTreeMap_usize_bool) -> [ &state_t <- _x ] s1)
+      | s1 = MutBorrow.borrow_mut <t_BTreeMap_usize_bool> {state_t}
+          (fun (_bor: MutBorrow.t t_BTreeMap_usize_bool) -> [ &_28 <- _bor ] [ &state_t <- _bor.final ] s2)
+      | s2 = insert_usize {_28} {v} {true} (fun (_x: t_Option_bool) -> [ &_27 <- _x ] s3)
+      | s3 = simplify_helper {t} {state_t} (fun (_x: t_Expr) -> [ &tp <- _x ] s4)
+      | s4 = -{resolve_BTreeMap_usize_bool state}- s5
+      | s5 = clone_BTreeMap_usize_bool {state} (fun (_x: t_BTreeMap_usize_bool) -> [ &state_e <- _x ] s6)
+      | s6 = MutBorrow.borrow_mut <t_BTreeMap_usize_bool> {state_e}
+          (fun (_bor: MutBorrow.t t_BTreeMap_usize_bool) -> [ &_36 <- _bor ] [ &state_e <- _bor.final ] s7)
+      | s7 = insert_usize {_36} {v} {false} (fun (_x: t_Option_bool) -> [ &_35 <- _x ] s8)
+      | s8 = simplify_helper {e} {state_e} (fun (_x: t_Expr) -> [ &ep <- _x ] s9)
+      | s9 = [ &_ret <- IfThenElse c tp ep ] s10
+      | s10 = return {_ret} ]
+    | bb11 = s0
+      [ s0 = elim_Some {_14} (fun (r0: bool) -> [ &b <- r0 ] s1)
+      | s1 = any [ br0 -> {b = false} (! bb14) | br1 -> {b} (! bb12) ] ]
+    | bb12 = s0 [ s0 = simplify_helper {t} {state} (fun (_x: t_Expr) -> [ &_ret <- _x ] s1) | s1 = return {_ret} ]
+    | bb14 = s0 [ s0 = simplify_helper {e} {state} (fun (_x: t_Expr) -> [ &_ret <- _x ] s1) | s1 = return {_ret} ] ]
+    [ & _ret: t_Expr = Any.any_l ()
+    | & self: t_Expr = self
+    | & state: t_BTreeMap_usize_bool = state
+    | & c: t_Expr = Any.any_l ()
+    | & t: t_Expr = Any.any_l ()
+    | & e: t_Expr = Any.any_l ()
+    | & v: UInt64.t = Any.any_l ()
+    | & _14: t_Option_ref_bool = Any.any_l ()
+    | & _17: UInt64.t = Any.any_l ()
+    | & b: bool = Any.any_l ()
+    | & state_t: t_BTreeMap_usize_bool = Any.any_l ()
+    | & _27: t_Option_bool = Any.any_l ()
+    | & _28: MutBorrow.t t_BTreeMap_usize_bool = Any.any_l ()
+    | & tp: t_Expr = Any.any_l ()
+    | & state_e: t_BTreeMap_usize_bool = Any.any_l ()
+    | & _35: t_Option_bool = Any.any_l ()
+    | & _36: MutBorrow.t t_BTreeMap_usize_bool = Any.any_l ()
+    | & ep: t_Expr = Any.any_l ()
+    | & c'0: t_Expr = Any.any_l ()
+    | & v'0: UInt64.t = Any.any_l ()
+    | & _50: t_Option_ref_bool = Any.any_l ()
+    | & _53: UInt64.t = Any.any_l ()
+    | & b'0: bool = Any.any_l ()
+    | & c'1: t_Expr = Any.any_l () ])
+    [ return (result: t_Expr) ->
+    {[@stop_split] [@expl:simplify_helper ensures] ([@stop_split] [@expl:simplify_helper ensures #0] forall i: UInt64.t. (exists v: bool. Map.get (view_BTreeMap_usize_bool state) (UInt64.t'int i)
+              = Some'0 v) -> does_not_contain result i)
+      /\ ([@stop_split] [@expl:simplify_helper ensures #1] is_simplified result)}
+      (! return {result}) ]
+end

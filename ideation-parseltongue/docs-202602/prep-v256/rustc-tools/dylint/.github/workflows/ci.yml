@@ -1,0 +1,199 @@
+name: CI
+
+on:
+  merge_group:
+  pull_request:
+  schedule:
+    - cron: "0 3 * * tue"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  check-up-to-dateness:
+    outputs:
+      is-up-to-date: ${{ steps.main.outputs.is-up-to-date }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - id: main
+        uses: trailofbits/check-up-to-dateness@v1
+
+  test:
+    needs: [check-up-to-dateness]
+
+    if: needs.check-up-to-dateness.outputs.is-up-to-date != 'true'
+
+    strategy:
+      fail-fast: ${{ github.event_name == 'merge_group' }}
+      matrix:
+        environment: [ubuntu-latest, macos-latest, windows-latest]
+        package:
+          [
+            cargo-dylint,
+            dylint_examples,
+            expensive-auto_correct,
+            expensive-alpine,
+            expensive-boundary_toolchains,
+            expensive-custom_toolchain,
+            other,
+          ]
+        include:
+          - environment: ubuntu-latest
+            package: cargo-dylint-ci
+
+    runs-on: ${{ matrix.environment }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # smoelius: The `nightly_toolchain` test makes sense only if the nightly driver is cached.
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.dylint_drivers/
+            ~/.rustup/toolchains/
+          key: ${{ runner.os }}-drivers-${{ hashFiles('driver/**') }}
+
+      - name: Rustup
+        run: rustup update
+
+      - name: Install dylint-link
+        run: cargo install --path ./dylint-link --force
+
+      - name: Install tools
+        run: |
+          rustup install nightly
+          rustup component add rustfmt --toolchain nightly
+          cargo install cargo-nested || true
+          npm install -g prettier
+
+      - name: Install CI tools
+        if: ${{ matrix.package == 'cargo-dylint-ci' }}
+        run: |
+          cargo install cargo-hack           || true
+          cargo install cargo-license        || true
+          cargo install cargo-msrv           || true
+          cargo install cargo-rdme           || true
+          cargo install cargo-supply-chain   || true
+          cargo install cargo-udeps --locked || true
+          cargo install cargo-unmaintained   || true
+          cargo install rustdoc-prettier     || true
+
+      - name: Free up space on Ubuntu
+        if: ${{ matrix.environment == 'ubuntu-latest' }}
+        run: |
+          # https://github.com/actions/runner-images/issues/2606#issuecomment-772683150
+          # du -sh /usr/*/* 2>/dev/null | sort -h || true
+          sudo rm -rfv /usr/lib/google-cloud-sdk | grep . >/dev/null
+          sudo rm -rfv /usr/lib/jvm              | grep . >/dev/null
+          sudo rm -rfv /usr/local/julia*         | grep . >/dev/null
+          sudo rm -rfv /usr/share/az_*           | grep . >/dev/null
+          sudo rm -rfv /usr/share/dotnet         | grep . >/dev/null
+          sudo rm -rfv /usr/share/miniconda      | grep . >/dev/null
+          sudo rm -rfv /usr/share/swift          | grep . >/dev/null
+
+      - name: Free up space on macOS
+        if: ${{ matrix.environment == 'macos-latest' }}
+        run: |
+          # https://github.com/actions/runner-images/issues/2840#issuecomment-2334584217
+          echo /Applications/Xcode* | sort | head -n1 | xargs rm -rf
+          # du -sh /*/* 2>/dev/null | sort -h || true
+
+      # smoelius: The next step avoids tests having to use `rustup` concurrently.
+      - name: Preinstall toolchains
+        run: cargo run -p dylint_internal --bin preinstall-toolchains
+
+      - name: Test
+        run: |
+          cargo nested fetch
+          if [[ '${{ matrix.package }}' =~ ^cargo-dylint ]]; then
+            case '${{ matrix.package }}' in
+              cargo-dylint)
+                cargo test -p cargo-dylint --no-default-features --features=cargo-cli -- --nocapture
+                ;;
+              cargo-dylint-ci)
+                cargo test -p cargo-dylint --test ci -- --nocapture
+                if [[ '${{ github.event_name }}' = 'schedule' || '${{ github.event_name }}' = 'workflow_dispatch' ]] ||
+                  git diff --name-only ${{ github.event.pull_request.base.sha }} | grep -w 'scheduled'
+                then
+                  cargo test -p scheduled -- --nocapture
+                fi
+                ;;
+              *)
+                exit 1
+                ;;
+            esac
+          elif [[ '${{ matrix.package }}' != 'other' ]]; then
+            PACKAGE=''
+            TEST=''
+            if [[ '${{ matrix.package }}' =~ ^expensive- ]]; then
+              if [[ '${{ github.event_name }}' != 'schedule' && '${{ github.event_name }}' != 'workflow_dispatch' ]] &&
+                ! git diff --name-only ${{ github.event.pull_request.base.sha }} | grep -w 'expensive'
+              then
+                exit
+              fi
+              PACKAGE='expensive'
+              TEST='${{ matrix.package }}'
+              TEST="--test=${TEST#'expensive-'}"
+            else
+              PACKAGE='${{ matrix.package }}'
+            fi
+            cargo test -p "$PACKAGE" "$TEST" -- --nocapture
+          else
+            cargo test --all-features --workspace --exclude cargo-dylint --exclude dylint_examples --exclude expensive --exclude scheduled -- --nocapture
+
+            # smoelius: The `cdylib` -> `lib` trick is due to @MinerSebas.
+            for X in examples/*/*; do
+              if [[ ! -d "$X" ]]; then
+                continue
+              fi
+              if [[ "$(basename "$X")" = '.cargo' || "$(basename "$X")" = 'src' ]]; then
+                  continue
+              fi
+              pushd "$X"
+              sed -i.bak 's/"cdylib"/"lib"/g' Cargo.toml
+              # smoelius: `RUSTUP_WINDOWS_PATH_ADD_BIN=1` is needed for the `redundant_reference`
+              # doc tests to pass on Windows.
+              RUSTUP_WINDOWS_PATH_ADD_BIN=1 cargo test --doc
+              popd
+            done
+          fi
+        env:
+          CARGO_INCREMENTAL: 0
+          GITHUB_TOKEN: ${{ github.token }}
+
+  all-checks:
+    needs: [test]
+
+    # smoelius: From "Defining prerequisite jobs"
+    # (https://docs.github.com/en/actions/using-jobs/using-jobs-in-a-workflow#defining-prerequisite-jobs):
+    # > If you would like a job to run even if a job it is dependent on did not succeed, use the
+    # > `always()` conditional expression in `jobs.<job_id>.if`.
+    if: ${{ always() }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check results
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: exit 1

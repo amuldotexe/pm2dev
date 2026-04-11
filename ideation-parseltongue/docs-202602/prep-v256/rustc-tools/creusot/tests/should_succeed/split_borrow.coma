@@ -1,0 +1,101 @@
+module M_z
+  use creusot.prelude.Any
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec z (return (x: bool)) = (! bb0
+    [ bb0 = s0 [ s0 = [ &_ret <- true ] s1 | s1 = return {_ret} ] ] [ & _ret: bool = Any.any_l () ])
+    [ return (result: bool) -> (! return {result}) ]
+end
+module M_f
+  use creusot.int.UInt64
+  use creusot.prelude.MutBorrow
+  use creusot.prelude.Any
+  
+  type t_MyInt = { f0: UInt64.t }
+  
+  type tup2_MyInt_MyInt = { f0'0: t_MyInt; f1'0: t_MyInt }
+  
+  let rec z (return (x: bool)) = any [ return (result: bool) -> (! return {result}) ]
+  
+  predicate resolve_refmut_tup2_MyInt_MyInt [@inline:trivial] (_1: MutBorrow.t tup2_MyInt_MyInt) = _1.final = _1.current
+  
+  meta "rewrite_def" predicate resolve_refmut_tup2_MyInt_MyInt
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec f (return (x: ())) = (! bb0
+    [ bb0 = s0
+      [ s0 = [ &_2 <- { f0 = (1: UInt64.t) } ] s1
+      | s1 = [ &_3 <- { f0 = (2: UInt64.t) } ] s2
+      | s2 = [ &x <- { f0'0 = _2; f1'0 = _3 } ] s3
+      | s3 = MutBorrow.borrow_mut <tup2_MyInt_MyInt> {x}
+          (fun (_bor: MutBorrow.t tup2_MyInt_MyInt) -> [ &y <- _bor ] [ &x <- _bor.final ] s4)
+      | s4 = z (fun (_x: bool) -> [ &_6 <- _x ] s5)
+      | s5 = any [ br0 -> {_6 = false} (! bb3) | br1 -> {_6} (! bb2) ] ]
+    | bb2 = s0
+      [ s0 = [ &_7 <- { f0 = (4: UInt64.t) } ] s1
+      | s1 = [ &y <- { y with current = { y.current with f1'0 = _7 } } ] s2
+      | s2 = bb4 ]
+    | bb3 = s0
+      [ s0 = [ &_8 <- { f0 = (10: UInt64.t) } ] s1
+      | s1 = [ &y <- { y with current = { y.current with f0'0 = _8 } } ] s2
+      | s2 = bb4 ]
+    | bb4 = s0 [ s0 = -{resolve_refmut_tup2_MyInt_MyInt y}- s1 | s1 = return {_ret} ] ]
+    [ & _ret: () = Any.any_l ()
+    | & x: tup2_MyInt_MyInt = Any.any_l ()
+    | & _2: t_MyInt = Any.any_l ()
+    | & _3: t_MyInt = Any.any_l ()
+    | & y: MutBorrow.t tup2_MyInt_MyInt = Any.any_l ()
+    | & _6: bool = Any.any_l ()
+    | & _7: t_MyInt = Any.any_l ()
+    | & _8: t_MyInt = Any.any_l () ]) [ return (result: ()) -> (! return {result}) ]
+end
+module M_g
+  use creusot.int.UInt64
+  use creusot.prelude.MutBorrow
+  use creusot.prelude.Any
+  
+  type t_MyInt = { f0: UInt64.t }
+  
+  type tup2_MyInt_MyInt = { f0'0: t_MyInt; f1'0: t_MyInt }
+  
+  predicate resolve_refmut_MyInt [@inline:trivial] (_1: MutBorrow.t t_MyInt) = _1.final = _1.current
+  
+  meta "rewrite_def" predicate resolve_refmut_MyInt
+  
+  predicate resolve_refmut_tup2_MyInt_MyInt [@inline:trivial] (_1: MutBorrow.t tup2_MyInt_MyInt) = _1.final = _1.current
+  
+  meta "rewrite_def" predicate resolve_refmut_tup2_MyInt_MyInt
+  
+  meta "compute_max_steps" 1000000
+  
+  meta "select_lsinst" "all"
+  
+  let rec g (return (x: ())) = (! bb0
+    [ bb0 = s0
+      [ s0 = [ &_2 <- { f0 = (1: UInt64.t) } ] s1
+      | s1 = [ &_3 <- { f0 = (2: UInt64.t) } ] s2
+      | s2 = [ &a <- { f0'0 = _2; f1'0 = _3 } ] s3
+      | s3 = MutBorrow.borrow_mut <tup2_MyInt_MyInt> {a}
+          (fun (_bor: MutBorrow.t tup2_MyInt_MyInt) -> [ &x <- _bor ] [ &a <- _bor.final ] s4)
+      | s4 = MutBorrow.borrow_final <t_MyInt> {x.current.f1'0} {MutBorrow.inherit_id (MutBorrow.get_id x) 1}
+          (fun (_bor: MutBorrow.t t_MyInt) ->
+            [ &_z <- _bor ] [ &x <- { x with current = { x.current with f1'0 = _bor.final } } ] s5)
+      | s5 = -{resolve_refmut_MyInt _z}- s6
+      | s6 = [ &_6 <- { f0 = (3: UInt64.t) } ] s7
+      | s7 = [ &x <- { x with current = { x.current with f0'0 = _6 } } ] s8
+      | s8 = -{resolve_refmut_tup2_MyInt_MyInt x}- s9
+      | s9 = return {_ret} ] ]
+    [ & _ret: () = Any.any_l ()
+    | & a: tup2_MyInt_MyInt = Any.any_l ()
+    | & _2: t_MyInt = Any.any_l ()
+    | & _3: t_MyInt = Any.any_l ()
+    | & x: MutBorrow.t tup2_MyInt_MyInt = Any.any_l ()
+    | & _z: MutBorrow.t t_MyInt = Any.any_l ()
+    | & _6: t_MyInt = Any.any_l () ]) [ return (result: ()) -> (! return {result}) ]
+end

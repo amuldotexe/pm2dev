@@ -1,0 +1,26 @@
+[package]
+name = "flux-fhir-analysis"
+version = "0.1.0"
+
+edition.workspace = true
+
+[dependencies]
+flux-common.workspace = true
+flux-config.workspace = true
+flux-errors.workspace = true
+flux-macros.workspace = true
+flux-middle.workspace = true
+flux-infer.workspace = true
+flux-rustc-bridge.workspace = true
+tracing = "0.1"
+
+derive-where.workspace = true
+ena = "0.14.3"
+itertools.workspace = true
+rustc-hash.workspace = true
+
+[package.metadata.rust-analyzer]
+rustc_private = true
+
+[lints]
+workspace = true

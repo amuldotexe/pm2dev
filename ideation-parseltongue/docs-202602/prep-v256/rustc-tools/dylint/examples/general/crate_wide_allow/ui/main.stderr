@@ -1,0 +1,11 @@
+warning: silently overrides `--warn clippy::assertions-on-constants` and `--deny clippy::assertions-on-constants`
+  --> $DIR/main.rs:1:1
+   |
+LL | #![allow(clippy::assertions_on_constants)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: allow `clippy::assertions-on-constants` in Cargo.toml
+   = note: `#[warn(crate_wide_allow)]` on by default
+
+warning: 1 warning emitted
+

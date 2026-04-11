@@ -1,0 +1,34 @@
+{
+  "name": "@argus/common",
+  "version": "0.0.1",
+  "files": [
+    "dist"
+  ],
+  "depot": {
+    "platform": "browser",
+    "target": "lib",
+    "depot-version": "0.3.0"
+  },
+  "main": "dist/lib.js",
+  "exports": {
+    ".": {
+      "default": "./dist/*.js"
+    },
+    "./*": {
+      "default": "./dist/*.js"
+    }
+  },
+  "type": "module",
+  "typedoc": {
+    "entryPoint": "./src/lib.ts"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.17.16",
+    "@types/react": "catalog:",
+    "cancelable-promise": "^4.3.1",
+    "jsdom": "^26.1.0",
+    "lodash": "^4.17.21",
+    "new-github-issue-url": "^1.1.0",
+    "react": "catalog:"
+  }
+}
