@@ -4,21 +4,26 @@ This is a list of new Tauri apps that I want to build
 
 - Debate-brainstorming-workflow Where we use Apache AGI as a common place to constantly read input from multiple LMS agents. We talk to the agents in the tori app using the normal CLI versions, and they brainstorm and can read each other's stuff using Apache Iggy
 
-- Tauri App for https://github.com/that-in-rust/tweet-scrolls-convert-twitter-archive-to-txt
+- Tauri App for twitter archive https://github.com/that-in-rust/tweet-scrolls-convert-twitter-archive-to-txt
 
-- Tauri App for https://github.com/that-in-rust/campfire-on-rust
+- Tauri App for campfire on rust https://github.com/that-in-rust/campfire-on-rust
 
-- Tauri App for https://github.com/that-in-rust/hackerrank-exploration-202604
+- Tauri App for hackerrank exploration 202604 https://github.com/that-in-rust/hackerrank-exploration-202604
 
-- Tauri App for https://github.com/that-in-rust/floo-network-message-queue-visual-lab
+- Tauri App for floo network message queue visual lab https://github.com/that-in-rust/floo-network-message-queue-visual-lab
 
-- Tauri App for https://github.com/that-in-rust/superset-on-rust
+- Tauri App for superset on rust https://github.com/that-in-rust/superset-on-rust
 
-- Tauri App for https://github.com/that-in-rust/pensieve-local-llm-server
+- Tauri App for pensieve local llm server https://github.com/that-in-rust/pensieve-local-llm-server
     - a multi-agent debate server that can be used to build a multi-agent debate system
     - a local LLM server that can be used to debate an idea without needing to connect to the internet
 
-## PMF-Ranked Tauri Ideas (GitHub Repo Virality Lens)
+- Tauri App for Wifi Management of home
+
+- 
+
+## Unclassified ideas
+
 
 - PDF Surgeon (BUILD THIS FIRST)
     - Drag-and-drop PDF page management. Merge, split, rearrange. 4 weeks to MVP.
