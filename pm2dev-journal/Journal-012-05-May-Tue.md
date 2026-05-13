@@ -2204,3 +2204,656 @@
      2. a “speak this out loud tomorrow” cheat sheet
      3. a side-by-side Rust vs JavaScript pseudocode table for the exact functions in the file
 ```
+
+## Knight Bus Graph Walker
+
+``` text
+
+Yes. I read the repo and traced the core path.
+
+     Ground truth I verified first:
+     - cargo test -q -> all tests passed
+     - I also built a snapshot from the fixture CSVs and queried it successfully
+     - example result for fn:login_user_flow_now forward 2-hop matched the test expectation
+
+     What this codebase is, from first principles
+
+     This is not trying to be “a graph database”.
+
+     It is trying to be a very specific machine:
+
+     1. take a graph described in CSV
+     2. compress it into a frozen on-disk shape
+     3. open that shape with mmap
+     4. answer only a narrow family of graph questions very fast:
+        - forward 1 hop
+        - backward 1 hop
+        - forward 2 hops
+        - backward 2 hops
+
+     So the repo is basically saying:
+
+     “Don’t keep the whole graph as fancy in-memory objects.
+     Turn it into a boring binary layout that the OS can page in as needed.
+     Then walking the graph becomes mostly array slicing.”
+
+     That is the whole bet.
+
+     Big-picture ELI5
+
+     Imagine a giant city map.
+
+     A normal graph system might say:
+     - let me build a whole smart city in RAM
+     - with buildings, indexes, labels, planners, caches, services
+
+     Knight Bus says:
+     - no
+     - draw the roads once
+     - laminate the map
+     - put page numbers on every intersection
+     - then when someone asks “who can I reach from here in 1 or 2 steps?”
+       just jump straight to the right page and read the road list
+
+     ASCII version:
+
+       CSV world                           Snapshot world                   Query world
+
+       nodes.csv                           manifest.json                    input key
+       edges.csv                           node_table.bin                      |
+           |                               strings.bin                         v
+           v                               key_index.bin                 binary search key
+       validate rows                       forward.offsets.bin                 |
+           |                               forward.peers.bin                   v
+           v                               reverse.offsets.bin            dense node id
+       sort + resolve keys                 reverse.peers.bin                  |
+           |                                                                  v
+           v                                                           offsets[id], offsets[id+1]
+       dense integer ids                                                        |
+           |                                                                    v
+           v                                                             peers[start..end]
+       write frozen arrays                                                       |
+                                                                                  v
+                                                                         neighbor dense ids
+                                                                                  |
+                                                                                  v
+                                                                             neighbor keys
+
+     Why this shape exists
+
+     Because the workload is narrow.
+
+     The repo thesis is basically:
+     - we do not need arbitrary graph query power
+     - we only need neighborhood traversal
+     - exact-key lookup can stay simple
+     - if the question is narrow enough, storage shape beats generality
+
+     That is why the code keeps repeating these ideas:
+     - immutable snapshot
+     - dense IDs
+     - dual CSR
+     - mmap
+     - forward and reverse precomputed separately
+     - correctness checked separately from timing
+
+     Why dense IDs?
+
+     Strings are expensive for hot-path walking.
+
+     If every edge said:
+
+       "fn:login_user_flow_now" -> "fn:fetch_user_record_now"
+
+     then every traversal is dragging strings around.
+
+     Dense IDs turn that into:
+
+       23 -> 17
+
+     That matters because arrays indexed by integers are the simplest fast thing computers do.
+
+     In code:
+     - node keys are sorted
+     - each gets a dense u32 ID
+     - edges are rewritten from string keys to dense integer pairs
+
+     Why dual CSR?
+
+     CSR = compressed sparse row.
+     In ELI5 terms:
+
+     - one array tells you where each node’s neighbor list starts and ends
+     - one array stores the flattened neighbor IDs
+
+     Like this:
+
+       offsets = [0, 2, 5, 5, 8]
+       peers   = [7, 9, 1, 3, 4, 2, 6, 8]
+
+     Meaning:
+     - node 0 neighbors = peers[0..2]
+     - node 1 neighbors = peers[2..5]
+     - node 2 neighbors = peers[5..5] = none
+     - node 3 neighbors = peers[5..8]
+
+     This code writes two copies:
+     - forward CSR
+     - reverse CSR
+
+     Why both?
+
+     Because backward traversal is a first-class workload.
+     If you only stored forward edges, then “who points to X?” would require rescanning everything.
+     That would destroy the main performance story.
+
+     So they pay the build-time cost once to make runtime cheap in both directions.
+
+     ASCII:
+
+       forward:
+         A -> B
+         A -> C
+         B -> D
+
+       reverse:
+         B <- A
+         C <- A
+         D <- B
+
+     Same graph, two roadbooks.
+
+     Why mmap?
+
+     Because mmap lets the OS treat files like memory without eagerly loading everything.
+
+     The repo’s argument is not:
+     - “the graph uses no RAM”
+
+     The actual argument is:
+     - “the graph artifact can stay on disk
+        and the runtime only touches the working set it needs”
+
+     That is a more honest and stronger systems claim.
+
+     So runtime.rs opens files read-only with memmap:
+     - forward offsets
+     - forward peers
+     - reverse offsets
+     - reverse peers
+     - node table
+     - string table
+     - key index
+
+     Then queries just read slices from those mapped files.
+
+     Why the binary files are split this way
+
+     The snapshot has these important pieces:
+
+     1. manifest.json
+        “what version is this, how many nodes, how many edges, what files exist”
+
+     2. node_table.bin
+        per node metadata:
+        - key_offset
+        - key_len
+        - flags
+
+     3. strings.bin
+        all node keys packed contiguously
+
+     4. key_index.bin
+        sorted key lookup indirection
+
+     5. forward.offsets.bin + forward.peers.bin
+        forward adjacency
+
+     6. reverse.offsets.bin + reverse.peers.bin
+        reverse adjacency
+
+     Why not just one file per node?
+     Because tiny random files are terrible for performance and operational simplicity.
+
+     Why not inline strings everywhere?
+     Because duplication would waste space and ruin cache behavior.
+
+     Why node_table + strings?
+     Because it’s the classic “struct table + blob” trick:
+     - fixed-width records for fast indexing
+     - variable-width strings in one continuous blob
+
+     Why key_index.bin exists
+
+     This is subtle but important.
+
+     Dense IDs are assigned in sorted node-key order during build.
+     Then key_index.bin is also written as dense IDs in sorted key order.
+
+     At first glance that sounds redundant.
+     And honestly, today it mostly is.
+
+     But conceptually it says:
+     - key lookup order is a separate concern from storage layout
+     - the runtime can binary-search a sorted key index to find dense IDs
+     - traversal can stay array-oriented after that
+
+     So this file is a design hook:
+     it keeps lookup and walk distinct, even if v002’s current dense ordering makes them coincide.
+
+     Why query is so simple
+
+     Hot path in runtime.rs:
+
+     1. binary search for the input key
+     2. get dense ID
+     3. choose forward or reverse arrays
+     4. read start/end offsets
+     5. slice peers array
+     6. if 2-hop, repeat once from frontier
+     7. map dense IDs back to strings
+     8. sort final keys for deterministic output
+
+     ASCII:
+
+       "fn:login_user_flow_now"
+                 |
+                 v
+           resolve_dense_id
+                 |
+                 v
+              dense 23
+                 |
+                 +----------------------+
+                 |                      |
+                 v                      v
+           forward arrays         reverse arrays
+                 |
+                 v
+        offsets[23], offsets[24]
+                 |
+                 v
+          peers[start..end]
+                 |
+                 v
+          one-hop neighbors
+                 |
+             if hops == 2
+                 |
+                 v
+        expand one more layer
+                 |
+                 v
+         dedupe, remove self
+                 |
+                 v
+           map IDs -> keys
+
+     That’s it.
+     No query planner.
+     No cost model.
+     No rich graph language.
+     That is on purpose.
+
+     Why only 1-hop and 2-hop?
+
+     Because the repo is optimizing for a benchmarkable, explainable problem.
+
+     1-hop and 2-hop are enough to represent:
+     - direct dependencies
+     - direct callers
+     - blast radius
+     - immediate neighborhood
+     - “who is near this thing?”
+
+     That is a meaningful workload slice without opening the door to:
+     - general graph algorithms
+     - deep traversal explosion
+     - complex memory behavior
+     - benchmark fuzziness
+
+     So this is a “do less, but do it cleanly” design.
+
+     Why low_ram.rs is huge
+
+     Because the hardest part is not querying.
+
+     The hardest part is building the snapshot without blowing memory.
+
+     That file is the real engine room.
+
+     It does external-sort style processing:
+     - read CSV rows in bounded buffers
+     - sort chunks
+     - spill chunks to temporary binary run files
+     - merge sorted runs
+     - resolve keys to dense IDs in passes
+     - emit final CSR files
+     - verify them in streaming fashion
+
+     This is why low_ram.rs is ~1700 lines while runtime.rs is only ~400.
+
+     That imbalance tells you the design truth:
+     - build path is allowed to be ugly and heavy
+     - runtime path must be tiny and boring
+
+     That is a very systems-programming-shaped tradeoff.
+
+     The low-RAM pipeline, explained like you’re 5
+
+     Think of trying to alphabetize a million index cards, but your desk is tiny.
+
+     So you:
+     1. sort small piles
+     2. put each pile in a labeled box
+     3. later merge the boxes in order
+
+     That is what low_ram.rs is doing.
+
+     Phase-by-phase:
+
+     1. BuildNodeRuns
+        Read node CSV, collect node keys in chunks, sort chunk, spill to disk
+
+     2. WriteNodeCatalog
+        Merge sorted node runs, detect duplicate nodes, write:
+        - node_table.bin
+        - strings.bin
+        - key_index.bin
+
+     3. BuildEdgeRuns
+        Read edges CSV in chunks, sort by from_key, spill to disk
+
+     4. ResolveFromKeys
+        Stream through sorted edge runs and sorted node catalog together
+        Turn from_key into from_dense
+
+     5. ResolveToKeys
+        Same idea for to_key -> to_dense
+
+     6. EmitForwardCsr
+        Merge resolved edge pairs
+        Deduplicate repeated edges
+        Write forward offsets + peers
+        Also create reversed edge runs for later
+
+     7. EmitReverseCsr
+        Consume reversed edge runs
+        Write reverse offsets + peers
+
+     8. Validate / Verify
+        Re-open snapshot
+        Check file sizes, offsets, node records, ordering
+        Stream-compare expected edges against snapshot edges
+        Run smoke queries
+
+     ASCII pipeline:
+
+       nodes.csv
+          |
+          v
+       [small sorted node runs] ----merge----> node_table + strings + key_index
+
+       edges.csv
+          |
+          v
+       [small sorted edge runs by from_key]
+          |
+          v
+       resolve from_key -> from_dense
+          |
+          v
+       [runs keyed by to_key]
+          |
+          v
+       resolve to_key -> to_dense
+          |
+          v
+       [resolved (from_dense,to_dense) runs]
+          |
+          +----> write forward CSR
+          |
+          +----> flip pairs and spill reverse runs
+                       |
+                       v
+                 write reverse CSR
+
+     Why the builder does so many passes
+
+     Because memory discipline matters more than elegance here.
+
+     If you naïvely did:
+     - load all nodes
+     - load all edges
+     - build giant hashmaps
+     - build adjacency vectors in RAM
+
+     then yes, code would be shorter.
+
+     But the repo’s whole story would collapse, because the builder itself would become the thing that disproves the low-RAM narrative.
+
+     So they accept:
+     - more passes
+     - more temp files
+     - more code complexity
+     in exchange for:
+     - bounded memory
+     - predictable build behavior
+     - a credible systems story
+
+     Why correctness is handled so aggressively
+
+     Because benchmark numbers are worthless if the answers are wrong.
+
+     This repo is unusually explicit about separating:
+     - correctness proof
+     - runtime timing
+     - memory measurement
+
+     That is a good sign.
+
+     You can see this in multiple places:
+     - truth.rs validates CSV shape and missing endpoints
+     - runtime.rs validates snapshot file sizes and internal consistency
+     - low_ram.rs verifies the emitted CSR stream against resolved CSV edges
+     - query smoke checks run after verification
+     - bench-corpus warns that correctness should be run separately first
+     - tests assert round-trip behavior
+
+     That means the authors know a classic benchmarking trap:
+
+     “Fast but wrong” is fake progress.
+
+     Why truth.rs exists separately
+
+     truth.rs is the “plain-language reference world”.
+
+     It loads CSVs into understandable structures:
+     - node rows
+     - edge rows
+     - maps of forward and reverse neighbors
+
+     This is not the fastest representation.
+     It is the clearest correctness oracle.
+
+     So the codebase has two worlds:
+
+     1. Truth world
+        easier to reason about
+        used for validation and parity
+
+     2. Runtime world
+        harder to build
+        optimized for serving queries
+
+     That separation is healthy.
+     It keeps the fast path from also having to be the only source of truth.
+
+     Why graph.rs exists separately
+
+     graph.rs captures the pure graph-shape logic:
+     - normalize keys to dense IDs
+     - deduplicate edges
+     - flatten adjacency lists
+     - collect neighbors within 1 or 2 hops
+
+     This is the “algorithmic essence” stripped away from file I/O.
+
+     It makes the behavior testable apart from mmap and CSV handling.
+
+     Why bench.rs exists separately
+
+     Because benchmarking is part of the product story, not an afterthought.
+
+     bench.rs measures:
+     - open/start cost
+     - repeated query latency
+     - mean, p50, p95, p99
+     - process RSS
+
+     And it does corpus-based replay, which matters because:
+     - single synthetic queries are easy to cherry-pick
+     - fixed corpora make comparisons more honest
+
+     The README’s entire v002 story depends on this separation:
+     - build cost
+     - verify cost
+     - query-time RAM
+     - query-time latency
+
+     That is more rigorous than “we ran it and it felt fast”.
+
+     Why main.rs is just a thin CLI shell
+
+     main.rs mostly wires commands to library functions.
+
+     That is the right move because:
+     - core logic stays testable
+     - CLI stays boring
+     - the crate can be reused from tests or future tooling
+
+     Commands:
+     - build
+     - verify
+     - query
+     - bench
+     - bench-corpus
+
+     Notice what is missing:
+     - no server
+     - no fuzzy search
+     - no mutations
+     - no fancy API layer
+
+     That absence is informative.
+     The code stayed disciplined around the benchmark thesis.
+
+     What the authors were optimizing for
+
+     If I compress the repo’s intent into one sentence:
+
+     “We want the smallest honest system that proves immutable dual-CSR + mmap is a better shape for this traversal workload than a general graph server.”
+
+     More detailed version:
+
+     1. Honest benchmark boundaries
+        The README repeatedly avoids hand-wavy claims.
+        It separates build, verify, and runtime.
+
+     2. Low runtime RAM
+        Not “zero RAM”, but “runtime only needs working set”.
+
+     3. Fast directional traversal
+        Both caller-like and callee-like paths matter.
+
+     4. Deterministic, inspectable artifacts
+        Binary files are simple and versioned.
+
+     5. Hackathon-realistic scope
+        The README literally says this was created in 5 hours.
+        The architecture reflects ruthless scoping.
+
+     Why the code looks the way it does
+
+     If you asked “why didn’t we write this as normal pretty business logic?” the answer is:
+
+     Because “pretty” was not the primary optimization target.
+
+     The target was:
+     - frozen binary artifacts
+     - low-RAM build path
+     - mmap-based read path
+     - benchmark defensibility
+
+     That forces certain code shapes:
+
+     1. Big low_ram.rs
+        because streaming external-sort pipelines are verbose
+
+     2. Binary file plumbing
+        because the data layout is the product
+
+     3. Validation everywhere
+        because corrupt binary formats are scary and benchmark trust matters
+
+     4. Narrow query model
+        because every extra feature weakens the proof
+
+     5. Precomputed reverse edges
+        because backward traversal must be cheap too
+
+     This repo is less “application code”
+     and more “special-purpose storage engine + proof harness”.
+
+     The deepest design insight in the repo
+
+     The most important idea is this:
+
+       Search and walk are different jobs.
+
+     Search asks:
+     - where is the thing?
+
+     Walk asks:
+     - what is near the thing?
+
+     Knight Bus refuses to overbuild search.
+     It keeps lookup minimal and spends its complexity budget on walk shape.
+
+     That is why this repo has such a strong identity.
+     It is not trying to solve all graph problems.
+     It is trying to solve one graph problem with a storage format that matches the workload.
+
+     Where the code is strongest
+
+     Strongest parts:
+     - runtime data path is simple and convincing
+     - low-RAM build pipeline matches the thesis
+     - correctness and benchmarking are treated seriously
+     - reverse traversal is first-class, not bolted on
+     - tests cover round-trip behavior and corruption detection
+
+     Where it is rough / hackathon-shaped
+
+     Also obvious from first principles:
+     - low_ram.rs is doing a lot in one file
+     - some abstractions are “good enough for now” rather than beautiful
+     - key_index.bin is more future-looking than currently necessary
+     - the codebase is very optimized around this one benchmark story
+
+     That’s not a criticism.
+     It’s exactly what a focused hackathon win often looks like:
+     tight thesis, ugly middle, clear result.
+
+     One-sentence ELI5
+
+     “We turned a graph into a set of read-only page-number tables so the computer can answer ‘who is 1 or 2 steps away from this node?’ by doing tiny array lookups instead of rebuilding or
+     scanning the whole graph in RAM.”
+
+     If you want, next I can do one of these:
+     1. a file-by-file walkthrough of src/
+     2. an even simpler “explain like I’m 10” version
+     3. a “systems programmer” version focused on storage/layout tradeoffs
+     4. a critique of what I would refactor in v003 without losing the thesis
+
+```
