@@ -1,7 +1,7 @@
 
 
 
-# Notes from various Udemy courses
+# Learning observations
 
 ```
 
